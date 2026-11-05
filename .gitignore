@@ -1,0 +1,6 @@
+android/build/
+android/.assets/
+*.keystore
+*.jks
+node_modules/
+.firebase/
