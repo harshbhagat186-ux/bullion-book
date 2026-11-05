@@ -297,6 +297,13 @@ V.home = function () {
   h += '<div class="tile click" onclick="App.nav(\'baki\')"><div class="k baki">To receive (Baki)</div><div class="v baki">' + money(baki.cash) + '</div><div class="s">' + metalLine(baki) + '</div></div>';
   h += '<div class="tile click" onclick="App.setBJ({tab:\'jama\'});App.nav(\'baki\')"><div class="k jama">To pay (Jama)</div><div class="v jama">' + money(jama.cash) + '</div><div class="s">' + metalLine(jama) + '</div></div>';
   h += '</div>';
+  h += '<div class="card"><h2>Stock by item</h2><div class="tw"><table class="t"><thead><tr><th>Item</th><th class="n">Closing</th><th class="n">Fine</th><th class="n">Buy ratio</th><th class="n">Sell ratio</th></tr></thead><tbody>';
+  shownKeys().forEach(function (k) {
+    var it = ITEMS[k], s = c.stock[k], rb = ratioOf(registerRows(k, 'buy'), k), rs = ratioOf(registerRows(k, 'sell'), k);
+    h += '<tr class="click" onclick="App.go(\'registers\',\'' + k + '\')"><td>' + it.name + '</td><td class="n">' + w(s.close, it.metal) + '</td><td class="n">' + (it.touch ? w(s.closeFine) : '') + '</td><td class="n">' + (rb.avg ? inr(rb.avg) : '-') + '</td><td class="n">' + (rs.avg ? inr(rs.avg) : '-') + '</td></tr>';
+  });
+  h += '<tr class="click" onclick="App.go(\'stock\')"><td><b>Cash in hand</b></td><td class="n"><b>' + money(c.cash.close) + '</b></td><td></td><td class="n" colspan="2"><small class="muted">In ' + money(c.cash.in) + ' · Out ' + money(c.cash.out) + '</small></td></tr>';
+  h += '</tbody></table></div></div>';
   h += '<div class="card"><h2>Recent bills</h2>' + billList(D.bills.slice().sort(byNewest).slice(0, 10)) + '</div>';
   return h;
 };
@@ -949,7 +956,7 @@ V.more = function () {
   var items = [['registers', 'Bill Registers', 'Silver, Sili 999, Rupa, Gold, Kaccha with ratios'], ['stock', 'Stock & Cash', 'Stock statement, cash in/out, expenses'], ['daybook', 'Day Book', 'Everything on one day, day report'], ['parties', 'Parties', 'Customers & suppliers'], ['printer', 'Printer', 'Bill size, Bluetooth thermal printer'], ['backup', 'Backup & Excel', 'Export to Excel, backup, restore'], ['settings', 'Settings', 'Shop details, GST, units, opening stock']];
   if (window.Cloud && Cloud.enabled && Cloud.isOwner) items.push(['users', 'Staff logins', 'Who can open this shop on other phones / laptops']);
   if (window.Cloud && Cloud.enabled && Cloud.user) items.push(['__signout', 'Sign out', 'Signed in as ' + esc(Cloud.user.email)]);
-  return '<div class="card menu"><div class="list">' + items.map(function (x) { return '<div class="it" onclick="' + (x[0] === '__signout' ? 'Cloud.signOut()' : 'App.go(\'' + x[0] + '\')') + '"><div class="l"><b>' + x[1] + '</b><small>' + x[2] + '</small></div><div class="r">&#8250;</div></div>'; }).join('') + '</div></div><p class="muted c" style="font-size:12px">Bullion Book 1.4 · ' + (window.Cloud && Cloud.enabled ? 'data saved online and on this device' : 'all data stays on this phone') + '</p>';
+  return '<div class="card menu"><div class="list">' + items.map(function (x) { return '<div class="it" onclick="' + (x[0] === '__signout' ? 'Cloud.signOut()' : 'App.go(\'' + x[0] + '\')') + '"><div class="l"><b>' + x[1] + '</b><small>' + x[2] + '</small></div><div class="r">&#8250;</div></div>'; }).join('') + '</div></div><p class="muted c" style="font-size:12px">Bullion Book 1.5 · ' + (window.Cloud && Cloud.enabled ? 'data saved online and on this device' : 'all data stays on this phone') + '</p>';
 };
 V.parties = function () {
   var c = compute();
