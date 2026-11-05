@@ -7,4 +7,4 @@ window.BULLION_FIREBASE = {      // firebaseConfig object from `firebase apps:sd
   messagingSenderId: '814675914928',
   appId: '1:814675914928:web:aba19f9e83947e608c8b75'
 };
-window.BULLION_OWNER_UID = '';    // owner's Firebase user id (same as OWNER_UID in firebase/firestore.rules)
+window.BULLION_OWNER_UID = 'DDk0a0fy5bWa0P52MAAGC1CUc4u2';    // owner's Firebase user id (same as OWNER_UID in firebase/firestore.rules)

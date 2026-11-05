@@ -5,7 +5,7 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function owner() {
-      return request.auth != null && request.auth.uid == 'OWNER_UID';
+      return request.auth != null && request.auth.uid == 'DDk0a0fy5bWa0P52MAAGC1CUc4u2';
     }
     function staff() {
       return request.auth != null
