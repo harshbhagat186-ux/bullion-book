@@ -1,11 +1,11 @@
 rules_version = '2';
 // Bullion Book security rules ("firewall").
-// Only the OWNER email and the emails listed in shops/main/meta/access.emails can read or write.
-// Everyone else, signed in or not, is blocked. Replace OWNER_EMAIL below with the owner's login email.
+// Only the OWNER account (by user id) and the emails listed in shops/main/meta/access.emails can read or write.
+// Everyone else, signed in or not, is blocked. Replace OWNER_UID below with the owner's Firebase user id.
 service cloud.firestore {
   match /databases/{database}/documents {
     function owner() {
-      return request.auth != null && request.auth.token.email == 'OWNER_EMAIL';
+      return request.auth != null && request.auth.uid == 'OWNER_UID';
     }
     function staff() {
       return request.auth != null

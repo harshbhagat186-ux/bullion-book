@@ -163,7 +163,7 @@ Cloud.resetPassword = function (email, cb) { auth.sendPasswordResetEmail(email).
 
 auth.onAuthStateChanged(function (u) {
   Cloud.user = u;
-  Cloud.isOwner = !!(u && u.email && String(window.BULLION_OWNER || '').toLowerCase() === u.email.toLowerCase());
+  Cloud.isOwner = !!(u && window.BULLION_OWNER_UID && u.uid === window.BULLION_OWNER_UID);
   stopListen(); gotRecs = gotState = false; remoteEmpty = true; last = {}; lastState = '';
   cache = { bills: {}, entries: {}, parties: {}, sauda: {} };
   if (!u) { setStatus('off'); showLogin(pendingMsg); pendingMsg = ''; return; }
