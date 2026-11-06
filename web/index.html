@@ -35,6 +35,6 @@
 <script src="xlsx.full.min.js"></script>
 <script src="app.js"></script>
 <script src="cloud.js"></script>
-<script>if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js');</script>
+<script>if ('serviceWorker' in navigator && location.protocol === 'https:') { var hadSW = !!navigator.serviceWorker.controller; navigator.serviceWorker.register('sw.js').then(function (r) { r.update(); }); navigator.serviceWorker.addEventListener('controllerchange', function () { if (hadSW && !window._reloaded) { window._reloaded = 1; location.reload(); } }); }</script>
 </body>
 </html>
