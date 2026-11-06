@@ -121,3 +121,4 @@ details.more summary{font-weight:600;color:var(--gold-d);cursor:pointer}
 .login img{width:64px;height:64px;border-radius:14px;display:block;margin:0 auto 6px}
 .login h2{text-align:center;margin:4px 0;color:var(--gold-d)}.login p{text-align:center;margin:4px 0 14px}
 .lerr{color:var(--sell);font-weight:600}
+.line.back{border-color:#c0752a;background:#fff4e8}
