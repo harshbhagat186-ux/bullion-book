@@ -297,6 +297,7 @@ V.home = function () {
   h += '<div class="tile click" onclick="App.nav(\'baki\')"><div class="k baki">To receive (Baki)</div><div class="v baki">' + money(baki.cash) + '</div><div class="s">' + metalLine(baki) + '</div></div>';
   h += '<div class="tile click" onclick="App.setBJ({tab:\'jama\'});App.nav(\'baki\')"><div class="k jama">To pay (Jama)</div><div class="v jama">' + money(jama.cash) + '</div><div class="s">' + metalLine(jama) + '</div></div>';
   h += '</div>';
+  h += '<div class="btns" style="margin-bottom:12px"><button class="btn gold" style="flex:1" onclick="App.setDB(\'\');App.go(\'daybook\')">Today\'s hisab (Day Book)</button><button class="btn" onclick="App.setDB(\'\');App.waDay()">WhatsApp</button></div>';
   h += '<div class="card"><h2>Stock by item</h2><div class="tw"><table class="t"><thead><tr><th>Item</th><th class="n">Closing</th><th class="n">Fine</th><th class="n">Buy ratio</th><th class="n">Sell ratio</th></tr></thead><tbody>';
   shownKeys().forEach(function (k) {
     var it = ITEMS[k], s = c.stock[k], rb = ratioOf(registerRows(k, 'buy'), k), rs = ratioOf(registerRows(k, 'sell'), k);
@@ -858,30 +859,60 @@ V.stock = function () {
   return h;
 };
 
-/* ----- Day book ----- */
+/* ----- Day book: each day separate, opening = previous day's closing ----- */
 var dbState = { date: today() };
-V.daybook = function () {
-  var d = dbState.date, c = compute(d);
-  var bills = D.bills.filter(function (b) { return b.date === d; }).sort(byNewest);
+function addDays(d, n) { var x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() + n); return x.getFullYear() + '-' + pad(x.getMonth() + 1) + '-' + pad(x.getDate()); }
+function dayData(d) {
+  var prev = compute(addDays(d, -1)), cur = compute(d);
+  var bills = D.bills.filter(function (b) { return b.date === d; }).sort(function (a, b) { return (a.time || '').localeCompare(b.time || ''); });
   var ents = D.entries.filter(function (e) { return e.date === d; });
   var sold = 0, bought = 0, recd = 0, paid = 0;
   bills.forEach(function (b) { if (b.type === 'sell') { sold += b.total; recd += b.paid; } else { bought += b.total; paid += b.paid; } });
-  var h = '<input type="date" value="' + d + '" onchange="App.setDB(this.value)" style="margin-bottom:12px">';
-  h += '<div class="grid" style="margin-bottom:12px">' + tile('Sales', money(sold), 'Received ' + money(recd)) + tile('Purchases', money(bought), 'Paid ' + money(paid)) + tile('Cash at day end', money(c.cash.close), '') + tile('Silver / Gold (fine)', w(c.metal.silver, 'silver'), w(c.metal.gold, 'gold')) + '</div>';
-  h += '<div class="card"><h2>Bills</h2>' + billList(bills) + '</div>';
-  h += '<div class="card"><h2>Other entries</h2>' + (ents.length ? '<div class="list">' + ents.map(function (e) { var a = acctOfItem(e.item); return '<div class="it click" onclick="App.go(\'entry\',{id:\'' + e.id + '\'})"><div class="l"><b>' + KIND[e.kind].short + (e.partyId ? ' · ' + esc((partyById(e.partyId) || {}).name) : '') + '</b><small>' + (e.item === 'cash' ? 'Cash' : ITEMS[e.item].name) + (e.note ? ' · ' + esc(e.note) : '') + '</small></div><div class="r">' + fmtAcct(a, e.qty) + '</div></div>'; }).join('') + '</div>' : '<div class="empty">None</div>') + '</div>';
-  h += '<div class="btns"><button class="btn" onclick="App.printDay()">Print day report</button></div>';
+  var rows = shownKeys().map(function (k) {
+    var p = prev.stock[k], c = cur.stock[k];
+    return { k: k, open: p.close, buy: r3(c.buy - p.buy), sell: r3(c.sell - p.sell), inn: r3(c.adjIn - p.adjIn), out: r3(c.adjOut - p.adjOut), close: c.close, fine: c.closeFine };
+  });
+  var cash = { open: prev.cash.close, in: cur.cash.in - prev.cash.in, out: cur.cash.out - prev.cash.out, close: cur.cash.close };
+  return { d: d, bills: bills, ents: ents, sold: sold, bought: bought, recd: recd, paid: paid, rows: rows, cash: cash, metal: cur.metal };
+}
+V.daybook = function () {
+  var X = dayData(dbState.date), d = X.d, isToday = d === today();
+  var h = '<div class="row" style="align-items:center;margin-bottom:12px;gap:8px"><button class="btn small" onclick="App.setDB(\'' + addDays(d, -1) + '\')">&#8592; Prev day</button><input type="date" value="' + d + '" onchange="App.setDB(this.value)" style="flex:1"><button class="btn small" onclick="App.setDB(\'' + addDays(d, 1) + '\')"' + (isToday ? ' disabled' : '') + '>Next day &#8594;</button></div>';
+  h += '<p class="muted" style="margin:0 0 10px">' + (isToday ? 'Today' : fd(d)) + ': opening is the closing of ' + fd(addDays(d, -1)) + '</p>';
+  h += '<div class="grid" style="margin-bottom:12px">' + tile('Sales', money(X.sold), 'Received ' + money(X.recd)) + tile('Purchases', money(X.bought), 'Paid ' + money(X.paid)) + tile('Cash opening', money(X.cash.open), 'In ' + money(X.cash.in) + ' · Out ' + money(X.cash.out)) + tile('Cash closing', money(X.cash.close), '') + '</div>';
+  h += '<div class="card"><h2>Day stock</h2><div class="tw"><table class="t"><thead><tr><th>Item</th><th class="n">Opening</th><th class="n">Buy</th><th class="n">Sell</th><th class="n">In</th><th class="n">Out</th><th class="n">Closing</th><th class="n">Fine</th></tr></thead><tbody>';
+  X.rows.forEach(function (r) { var it = ITEMS[r.k]; h += '<tr><td>' + it.name + '<br><small class="muted">' + unitOf(it.metal) + '</small></td><td class="n">' + w(r.open) + '</td><td class="n">' + w(r.buy) + '</td><td class="n">' + w(r.sell) + '</td><td class="n">' + w(r.inn) + '</td><td class="n">' + w(r.out) + '</td><td class="n"><b>' + w(r.close) + '</b></td><td class="n">' + (it.touch ? w(r.fine) : '') + '</td></tr>'; });
+  h += '<tr><td><b>Cash</b></td><td class="n">' + inr(X.cash.open) + '</td><td></td><td></td><td class="n">' + inr(X.cash.in) + '</td><td class="n">' + inr(X.cash.out) + '</td><td class="n"><b>' + inr(X.cash.close) + '</b></td><td></td></tr>';
+  h += '</tbody></table></div></div>';
+  h += '<div class="card"><h2>Bills</h2>' + billList(X.bills.slice().sort(byNewest)) + '</div>';
+  h += '<div class="card"><h2>Other entries</h2>' + (X.ents.length ? '<div class="list">' + X.ents.map(function (e) { var a = acctOfItem(e.item); return '<div class="it click" onclick="App.go(\'entry\',{id:\'' + e.id + '\'})"><div class="l"><b>' + KIND[e.kind].short + (e.partyId ? ' · ' + esc((partyById(e.partyId) || {}).name) : '') + '</b><small>' + (e.item === 'cash' ? 'Cash' : ITEMS[e.item].name) + (e.note ? ' · ' + esc(e.note) : '') + '</small></div><div class="r">' + fmtAcct(a, e.qty) + '</div></div>'; }).join('') + '</div>' : '<div class="empty">None</div>') + '</div>';
+  h += '<div class="btns"><button class="btn gold" onclick="App.waDay()">Send on WhatsApp</button><button class="btn" onclick="App.printDay()">Print day report</button></div>';
   return h;
 };
+function dayText(d) {
+  var X = dayData(d), S = D.settings, t = '*' + S.shopName + '*\n*Day report ' + fd(d) + '*\n\n';
+  t += 'Sales: Rs.' + inr(X.sold) + ' (recd Rs.' + inr(X.recd) + ')\nPurchases: Rs.' + inr(X.bought) + ' (paid Rs.' + inr(X.paid) + ')\n';
+  if (X.bills.length) { t += '\n*Bills*\n'; X.bills.forEach(function (b) { t += (b.type === 'sell' ? 'Sale ' : 'Buy ') + b.no + ' ' + (b.partyName || 'Cash') + ': ' + b.lines.map(function (l) { return ITEMS[l.item].short + ' ' + w(l.weight) + ' @' + inr(l.rate); }).join(', ') + ' = Rs.' + inr(b.total) + '\n'; }); }
+  if (X.ents.length) { t += '\n*Other entries*\n'; X.ents.forEach(function (e) { t += KIND[e.kind].short + (e.partyId ? ' ' + ((partyById(e.partyId) || {}).name || '') : '') + ': ' + fmtAcct(acctOfItem(e.item), e.qty).replace(/<[^>]*>/g, '').replace('₹', 'Rs.') + (e.note ? ' (' + e.note + ')' : '') + '\n'; }); }
+  t += '\n*Stock (opening > closing)*\n';
+  X.rows.forEach(function (r) { var it = ITEMS[r.k]; if (Math.abs(r.open) < 0.0005 && Math.abs(r.close) < 0.0005 && !r.buy && !r.sell) return; t += it.name + ': ' + w(r.open) + ' > ' + w(r.close, it.metal) + (r.buy ? ' | buy ' + w(r.buy) : '') + (r.sell ? ' | sell ' + w(r.sell) : '') + (it.touch ? ' | fine ' + w(r.fine) : '') + '\n'; });
+  t += 'Cash: Rs.' + inr(X.cash.open) + ' > Rs.' + inr(X.cash.close) + ' (in ' + inr(X.cash.in) + ', out ' + inr(X.cash.out) + ')\n';
+  return t;
+}
+function waDay() {
+  var t = dayText(dbState.date), ph = String(D.settings.waNumber || '').replace(/\D/g, '');
+  if (ph.length === 10) ph = '91' + ph;
+  var url = 'https://wa.me/' + ph + '?text=' + encodeURIComponent(t);
+  if (HAS_APP) location.href = url; else window.open(url, '_blank');
+}
 function printDay() {
-  var d = dbState.date, c = compute(d), S = D.settings;
-  var bills = D.bills.filter(function (b) { return b.date === d; }).sort(function (a, b) { return (a.time || '').localeCompare(b.time || ''); });
+  var X = dayData(dbState.date), d = X.d, S = D.settings;
   var h = '<!doctype html><html><head><meta charset="utf-8"><style>@page{size:A4;margin:10mm}body{font-family:Arial;font-size:12px}table{width:100%;border-collapse:collapse;margin-bottom:10px}th,td{border:1px solid #777;padding:4px 6px}th{background:#f1e7cf}.r{text-align:right}</style></head><body><h2 style="margin:0">' + esc(S.shopName) + '</h2><h3>Day report ' + fd(d) + '</h3>';
   h += '<table><tr><th>Time</th><th>No</th><th>Type</th><th>Party</th><th>Items</th><th class="r">Total</th><th class="r">Recd/Paid</th></tr>';
-  bills.forEach(function (b) { h += '<tr><td>' + esc(b.time) + '</td><td>' + esc(b.no) + '</td><td>' + (b.type === 'sell' ? 'Sale' : 'Purchase') + '</td><td>' + esc(b.partyName || 'Cash') + '</td><td>' + b.lines.map(function (l) { return ITEMS[l.item].short + ' ' + w(l.weight) + ' @' + inr(l.rate); }).join('<br>') + '</td><td class="r">' + inr(b.total) + '</td><td class="r">' + inr(b.paid) + '</td></tr>'; });
-  h += '</table><table><tr><th>Item</th><th class="r">Closing</th><th class="r">Fine</th></tr>';
-  shownKeys().forEach(function (k) { h += '<tr><td>' + ITEMS[k].name + '</td><td class="r">' + w(c.stock[k].close, ITEMS[k].metal) + '</td><td class="r">' + (ITEMS[k].touch ? w(c.stock[k].closeFine) : '') + '</td></tr>'; });
-  h += '<tr><td>Cash in hand</td><td class="r">' + inr(c.cash.close) + '</td><td></td></tr></table></body></html>';
+  X.bills.forEach(function (b) { h += '<tr><td>' + esc(b.time) + '</td><td>' + esc(b.no) + '</td><td>' + (b.type === 'sell' ? 'Sale' : 'Purchase') + '</td><td>' + esc(b.partyName || 'Cash') + '</td><td>' + b.lines.map(function (l) { return ITEMS[l.item].short + ' ' + w(l.weight) + ' @' + inr(l.rate); }).join('<br>') + '</td><td class="r">' + inr(b.total) + '</td><td class="r">' + inr(b.paid) + '</td></tr>'; });
+  h += '</table><table><tr><th>Item</th><th class="r">Opening</th><th class="r">Buy</th><th class="r">Sell</th><th class="r">In</th><th class="r">Out</th><th class="r">Closing</th><th class="r">Fine</th></tr>';
+  X.rows.forEach(function (r) { var it = ITEMS[r.k]; h += '<tr><td>' + it.name + '</td><td class="r">' + w(r.open) + '</td><td class="r">' + w(r.buy) + '</td><td class="r">' + w(r.sell) + '</td><td class="r">' + w(r.inn) + '</td><td class="r">' + w(r.out) + '</td><td class="r">' + w(r.close, it.metal) + '</td><td class="r">' + (it.touch ? w(r.fine) : '') + '</td></tr>'; });
+  h += '<tr><td>Cash</td><td class="r">' + inr(X.cash.open) + '</td><td></td><td></td><td class="r">' + inr(X.cash.in) + '</td><td class="r">' + inr(X.cash.out) + '</td><td class="r">' + inr(X.cash.close) + '</td><td></td></tr></table></body></html>';
   printHtml(h, 'Day ' + d, 'a4');
 }
 
@@ -956,7 +987,7 @@ V.more = function () {
   var items = [['registers', 'Bill Registers', 'Silver, Sili 999, Rupa, Gold, Kaccha with ratios'], ['stock', 'Stock & Cash', 'Stock statement, cash in/out, expenses'], ['daybook', 'Day Book', 'Everything on one day, day report'], ['parties', 'Parties', 'Customers & suppliers'], ['printer', 'Printer', 'Bill size, Bluetooth thermal printer'], ['backup', 'Backup & Excel', 'Export to Excel, backup, restore'], ['settings', 'Settings', 'Shop details, GST, units, opening stock']];
   if (window.Cloud && Cloud.enabled && Cloud.isOwner) items.push(['users', 'Staff logins', 'Who can open this shop on other phones / laptops']);
   if (window.Cloud && Cloud.enabled && Cloud.user) items.push(['__signout', 'Sign out', 'Signed in as ' + esc(Cloud.user.email)]);
-  return '<div class="card menu"><div class="list">' + items.map(function (x) { return '<div class="it" onclick="' + (x[0] === '__signout' ? 'Cloud.signOut()' : 'App.go(\'' + x[0] + '\')') + '"><div class="l"><b>' + x[1] + '</b><small>' + x[2] + '</small></div><div class="r">&#8250;</div></div>'; }).join('') + '</div></div><p class="muted c" style="font-size:12px">Bullion Book 1.5 · ' + (window.Cloud && Cloud.enabled ? 'data saved online and on this device' : 'all data stays on this phone') + '</p>';
+  return '<div class="card menu"><div class="list">' + items.map(function (x) { return '<div class="it" onclick="' + (x[0] === '__signout' ? 'Cloud.signOut()' : 'App.go(\'' + x[0] + '\')') + '"><div class="l"><b>' + x[1] + '</b><small>' + x[2] + '</small></div><div class="r">&#8250;</div></div>'; }).join('') + '</div></div><p class="muted c" style="font-size:12px">Bullion Book 1.6 · ' + (window.Cloud && Cloud.enabled ? 'data saved online and on this device' : 'all data stays on this phone') + '</p>';
 };
 V.parties = function () {
   var c = compute();
@@ -979,7 +1010,7 @@ function addPartySave() {
 V.settings = function () {
   var S = D.settings, O = D.opening;
   function inp(id, label, val, type) { return '<label class="f"><span>' + label + '</span><input id="' + id + '" ' + (type === 'n' ? 'type="number" step="any" inputmode="decimal"' : '') + ' value="' + esc(val) + '"></label>'; }
-  var h = '<div class="card"><h2>Shop details (bill header)</h2>' + inp('s_name', 'Shop name', S.shopName) + inp('s_tag', 'Tagline', S.tagline) + '<label class="f"><span>Address</span><textarea id="s_addr" rows="2">' + esc(S.address) + '</textarea></label>' + inp('s_phone', 'Phone', S.phone) + inp('s_footer', 'Bill footer', S.footer) + inp('s_terms', 'Terms (A4 bill)', S.terms) + '</div>';
+  var h = '<div class="card"><h2>Shop details (bill header)</h2>' + inp('s_name', 'Shop name', S.shopName) + inp('s_tag', 'Tagline', S.tagline) + '<label class="f"><span>Address</span><textarea id="s_addr" rows="2">' + esc(S.address) + '</textarea></label>' + inp('s_phone', 'Phone', S.phone) + inp('s_wa', 'WhatsApp number for day report', S.waNumber || '') + inp('s_footer', 'Bill footer', S.footer) + inp('s_terms', 'Terms (A4 bill)', S.terms) + '</div>';
   h += '<div class="card"><h2>Units &amp; rates</h2><div class="row"><label class="f"><span>Silver unit</span><select id="s_su"><option ' + (S.units.silver.unit === 'kg' ? 'selected' : '') + '>kg</option><option ' + (S.units.silver.unit === 'g' ? 'selected' : '') + '>g</option></select></label>' + inp('s_sr', 'Silver rate is per (units)', S.units.silver.ratePer, 'n') + '</div>';
   h += '<div class="row"><label class="f"><span>Gold unit</span><select id="s_gu"><option ' + (S.units.gold.unit === 'g' ? 'selected' : '') + '>g</option><option ' + (S.units.gold.unit === 'kg' ? 'selected' : '') + '>kg</option></select></label>' + inp('s_gr', 'Gold rate is per (units)', S.units.gold.ratePer, 'n') + '</div>';
   h += '<p class="muted" style="font-size:12px">Example: silver in kg with rate per 1 kg → 20.000 × 2,47,000 = 49,40,000. Gold in g with rate per 10 g → 10 g × 75,000 = 75,000.</p>';
@@ -991,7 +1022,7 @@ V.settings = function () {
 };
 function saveSettings() {
   var S = D.settings, O = D.opening;
-  S.shopName = $('s_name').value.trim() || 'My Bullion Shop'; S.tagline = $('s_tag').value; S.address = $('s_addr').value; S.phone = $('s_phone').value; S.footer = $('s_footer').value; S.terms = $('s_terms').value;
+  S.shopName = $('s_name').value.trim() || 'My Bullion Shop'; S.tagline = $('s_tag').value; S.address = $('s_addr').value; S.phone = $('s_phone').value; S.waNumber = $('s_wa').value.trim(); S.footer = $('s_footer').value; S.terms = $('s_terms').value;
   S.gstOn = false;
   S.units.silver.unit = $('s_su').value; S.units.silver.ratePer = num($('s_sr').value) || 1; S.units.gold.unit = $('s_gu').value; S.units.gold.ratePer = num($('s_gr').value) || 1;
   ITEM_KEYS.forEach(function (k) { S.stockItems[k] = $('s_st_' + k).checked; });
@@ -1137,7 +1168,7 @@ window.App = {
   eset: eset, eFine: eFine, saveEntry: saveEntry, delEntry: delEntry,
   setSD: function (o) { for (var k in o) sdState[k] = o[k]; if (o.range === 'custom' && !sdState.from) { sdState.from = today().slice(0, 8) + '01'; sdState.to = today(); } show(); },
   sdType: function (t) { sdType = t; show(); }, sdCalc: sdCalc, sdAdd: sdAdd, sdTick: sdTick, sdDel: sdDel,
-  setDB: function (v) { dbState.date = v || today(); show(); }, printDay: printDay,
+  setDB: function (v) { dbState.date = (v && v <= today()) ? v : today(); show(); }, printDay: printDay, waDay: waDay,
   saveSettings: saveSettings, setPaper: setPaper, setBtW: setBtW, btScan: btScan, btPick: btPick, btTest: btTest,
   addUser: function () { var e = $('u_e').value, p = $('u_p').value; toast('Adding…'); Cloud.addUser(e, p, function (err) { if (err) toast(err); else { toast('Login added: ' + e); show(); } }); },
   removeUser: function (e) { if (!confirm('Remove ' + e + '? They will not be able to open the shop any more.')) return; Cloud.removeUser(e, function (err) { toast(err || 'Removed'); show(); }); },
