@@ -297,7 +297,7 @@ V.home = function () {
   h += '<div class="tile click" onclick="App.nav(\'baki\')"><div class="k baki">To receive (Baki)</div><div class="v baki">' + money(baki.cash) + '</div><div class="s">' + metalLine(baki) + '</div></div>';
   h += '<div class="tile click" onclick="App.setBJ({tab:\'jama\'});App.nav(\'baki\')"><div class="k jama">To pay (Jama)</div><div class="v jama">' + money(jama.cash) + '</div><div class="s">' + metalLine(jama) + '</div></div>';
   h += '</div>';
-  h += '<div class="btns" style="margin-bottom:12px"><button class="btn gold" style="flex:1" onclick="App.setDB(\'\');App.go(\'daybook\')">Today\'s hisab (Day Book)</button><button class="btn" onclick="App.setDB(\'\');App.waDay()">WhatsApp</button></div>';
+  h += '<div class="btns" style="margin-bottom:12px"><button class="btn gold" style="flex:1" onclick="App.setDB(\'\');App.go(\'daybook\')">Today\'s hisab</button><button class="btn" onclick="App.setDB(\'\');App.waDay()">WhatsApp</button></div>';
   h += '<div class="card"><h2>Stock by item</h2><div class="tw"><table class="t"><thead><tr><th>Item</th><th class="n">Closing</th><th class="n">Fine</th><th class="n">Buy ratio</th><th class="n">Sell ratio</th></tr></thead><tbody>';
   shownKeys().forEach(function (k) {
     var it = ITEMS[k], s = c.stock[k], rb = ratioOf(registerRows(k, 'buy'), k), rs = ratioOf(registerRows(k, 'sell'), k);
@@ -305,7 +305,7 @@ V.home = function () {
   });
   h += '<tr class="click" onclick="App.go(\'stock\')"><td><b>Cash in hand</b></td><td class="n"><b>' + money(c.cash.close) + '</b></td><td></td><td class="n" colspan="2"><small class="muted">In ' + money(c.cash.in) + ' · Out ' + money(c.cash.out) + '</small></td></tr>';
   h += '</tbody></table></div></div>';
-  h += '<div class="card"><h2>Recent bills</h2>' + billList(D.bills.slice().sort(byNewest).slice(0, 10)) + '</div>';
+  h += '<div class="card"><h2>Today\'s bills</h2>' + billList(todays.slice().sort(byNewest)) + '<p class="muted" style="font-size:12px;margin:8px 0 0">Old days: More → Day Book</p></div>';
   return h;
 };
 function tile(k, v, s, cls) { return '<div class="tile ' + (cls || '') + '"><div class="k">' + k + '</div><div class="v">' + v + '</div>' + (s ? '<div class="s">' + s + '</div>' : '') + '</div>'; }
@@ -319,7 +319,7 @@ function billList(bills) {
 }
 
 /* ----- registers (mirrors Buy Sell / Silver / Rupa / Gold / Kaccha sheets) ----- */
-var regState = { item: 'silver', range: 'month', from: '', to: '' };
+var regState = { item: 'silver', range: 'today', from: '', to: '' };
 function rangeDates(st) {
   var t = today(), d = new Date();
   if (st.range === 'today') return [t, t];
@@ -445,10 +445,10 @@ function saveBill(print) {
   if (!p && Math.abs(b.due) >= 1) { toast('Enter a party name: this bill has a balance of ' + money(b.due)); return; }
   if (F.id) {
     var old = billById(F.id);
-    if (old && old.type !== b.type) b.no = nextNo(b.type);
+    if (old && (old.type !== b.type || old.date !== b.date)) b.no = nextNo(b.type, b.date, b.id);
     D.bills = D.bills.map(function (x) { return x.id === b.id ? b : x; });
   } else {
-    b.no = nextNo(b.type);
+    b.no = nextNo(b.type, b.date);
     D.bills.push(b);
   }
   save();
@@ -458,7 +458,12 @@ function saveBill(print) {
   show();
   if (print) printBill(b.id);
 }
-function nextNo(type) { var n = D.seq[type]++; return (type === 'sell' ? D.settings.sellPrefix : D.settings.buyPrefix) + n; }
+/* Bill numbers start again from 1 every day (separate series per date). */
+function nextNo(type, date, exceptId) {
+  var max = 0;
+  D.bills.forEach(function (x) { if (x.type === type && x.date === date && x.id !== exceptId) { var m = String(x.no || '').match(/(\d+)\s*$/); if (m) max = Math.max(max, +m[1]); } });
+  return (type === 'sell' ? D.settings.sellPrefix : D.settings.buyPrefix) + (max + 1);
+}
 function billById(id) { for (var i = 0; i < D.bills.length; i++) if (D.bills[i].id === id) return D.bills[i]; return null; }
 
 /* ----- bill view ----- */
@@ -854,8 +859,8 @@ V.stock = function () {
   h += '</tbody></table></div></div>';
   h += '<div class="btns"><button class="btn gold" onclick="App.go(\'entry\',{kind:\'cashin\'})">Cash In</button><button class="btn dark" onclick="App.go(\'entry\',{kind:\'cashout\'})">Cash Out / Expense</button></div>';
   h += '<div class="btns"><button class="btn" onclick="App.go(\'entry\',{kind:\'stockin\'})">Stock In</button><button class="btn" onclick="App.go(\'entry\',{kind:\'stockout\'})">Stock Out</button><button class="btn" onclick="App.go(\'settings\')">Opening stock</button></div>';
-  var adj = D.entries.filter(function (e) { return /^(cash|stock)(in|out)$/.test(e.kind); }).sort(function (a, b) { return b.date.localeCompare(a.date); }).slice(0, 30);
-  h += '<div class="card" style="margin-top:12px"><h2>Cash &amp; stock entries</h2>' + (adj.length ? '<div class="list">' + adj.map(function (e) { var a = acctOfItem(e.item); return '<div class="it click" onclick="App.go(\'entry\',{id:\'' + e.id + '\'})"><div class="l"><b>' + KIND[e.kind].short + (e.item !== 'cash' ? ' · ' + ITEMS[e.item].name : '') + '</b><small>' + fd(e.date) + (e.note ? ' · ' + esc(e.note) : '') + '</small></div><div class="r ' + (/in$/.test(e.kind) ? 'jama' : 'baki') + '">' + (e.item === 'cash' ? money(e.qty) : w(e.weight, a)) + '</div></div>'; }).join('') + '</div>' : '<div class="empty">None yet</div>') + '</div>';
+  var adj = D.entries.filter(function (e) { return e.date === today() && /^(cash|stock)(in|out)$/.test(e.kind); }).sort(function (a, b) { return b.date.localeCompare(a.date); }).slice(0, 30);
+  h += '<div class="card" style="margin-top:12px"><h2>Today\'s cash &amp; stock entries</h2>' + (adj.length ? '<div class="list">' + adj.map(function (e) { var a = acctOfItem(e.item); return '<div class="it click" onclick="App.go(\'entry\',{id:\'' + e.id + '\'})"><div class="l"><b>' + KIND[e.kind].short + (e.item !== 'cash' ? ' · ' + ITEMS[e.item].name : '') + '</b><small>' + fd(e.date) + (e.note ? ' · ' + esc(e.note) : '') + '</small></div><div class="r ' + (/in$/.test(e.kind) ? 'jama' : 'baki') + '">' + (e.item === 'cash' ? money(e.qty) : w(e.weight, a)) + '</div></div>'; }).join('') + '</div>' : '<div class="empty">None yet</div>') + '</div>';
   return h;
 };
 
@@ -917,7 +922,7 @@ function printDay() {
 }
 
 /* ----- Sauda: silver / gold kg + rate only, with ratio and received tick ----- */
-var sdState = { metal: 'silver', range: 'all', from: '', to: '', show: 'all' };
+var sdState = { metal: 'silver', range: 'today', from: '', to: '', show: 'all' };
 var sdType = 'buy';
 function sdRows(metal, rg) {
   return (D.sauda || []).filter(function (x) { return x.metal === metal && inRange(x.date, rg[0], rg[1]); })
@@ -987,7 +992,7 @@ V.more = function () {
   var items = [['registers', 'Bill Registers', 'Silver, Sili 999, Rupa, Gold, Kaccha with ratios'], ['stock', 'Stock & Cash', 'Stock statement, cash in/out, expenses'], ['daybook', 'Day Book', 'Everything on one day, day report'], ['parties', 'Parties', 'Customers & suppliers'], ['printer', 'Printer', 'Bill size, Bluetooth thermal printer'], ['backup', 'Backup & Excel', 'Export to Excel, backup, restore'], ['settings', 'Settings', 'Shop details, GST, units, opening stock']];
   if (window.Cloud && Cloud.enabled && Cloud.isOwner) items.push(['users', 'Staff logins', 'Who can open this shop on other phones / laptops']);
   if (window.Cloud && Cloud.enabled && Cloud.user) items.push(['__signout', 'Sign out', 'Signed in as ' + esc(Cloud.user.email)]);
-  return '<div class="card menu"><div class="list">' + items.map(function (x) { return '<div class="it" onclick="' + (x[0] === '__signout' ? 'Cloud.signOut()' : 'App.go(\'' + x[0] + '\')') + '"><div class="l"><b>' + x[1] + '</b><small>' + x[2] + '</small></div><div class="r">&#8250;</div></div>'; }).join('') + '</div></div><p class="muted c" style="font-size:12px">Bullion Book 1.6 · ' + (window.Cloud && Cloud.enabled ? 'data saved online and on this device' : 'all data stays on this phone') + '</p>';
+  return '<div class="card menu"><div class="list">' + items.map(function (x) { return '<div class="it" onclick="' + (x[0] === '__signout' ? 'Cloud.signOut()' : 'App.go(\'' + x[0] + '\')') + '"><div class="l"><b>' + x[1] + '</b><small>' + x[2] + '</small></div><div class="r">&#8250;</div></div>'; }).join('') + '</div></div><p class="muted c" style="font-size:12px">Bullion Book 1.7 · ' + (window.Cloud && Cloud.enabled ? 'data saved online and on this device' : 'all data stays on this phone') + '</p>';
 };
 V.parties = function () {
   var c = compute();
@@ -1015,7 +1020,7 @@ V.settings = function () {
   h += '<div class="row"><label class="f"><span>Gold unit</span><select id="s_gu"><option ' + (S.units.gold.unit === 'g' ? 'selected' : '') + '>g</option><option ' + (S.units.gold.unit === 'kg' ? 'selected' : '') + '>kg</option></select></label>' + inp('s_gr', 'Gold rate is per (units)', S.units.gold.ratePer, 'n') + '</div>';
   h += '<p class="muted" style="font-size:12px">Example: silver in kg with rate per 1 kg → 20.000 × 2,47,000 = 49,40,000. Gold in g with rate per 10 g → 10 g × 75,000 = 75,000.</p>';
   h += '<h3>Count in stock</h3>' + ITEM_KEYS.map(function (k) { return '<label class="chk"><input type="checkbox" id="s_st_' + k + '" ' + (S.stockItems[k] ? 'checked' : '') + '> ' + ITEMS[k].name + '</label>'; }).join('') + '</div>';
-  h += '<div class="card"><h2>Bill numbers</h2><div class="row">' + inp('s_sp', 'Sale prefix', S.sellPrefix) + inp('s_sn', 'Next sale no.', D.seq.sell, 'n') + '</div><div class="row">' + inp('s_bp', 'Purchase prefix', S.buyPrefix) + inp('s_bn', 'Next purchase no.', D.seq.buy, 'n') + '</div></div>';
+  h += '<div class="card"><h2>Bill numbers</h2><div class="row">' + inp('s_sp', 'Sale prefix', S.sellPrefix) + inp('s_bp', 'Purchase prefix', S.buyPrefix) + '</div><p class="muted" style="font-size:12px">Bill numbers start again from 1 every day.</p></div>';
   h += '<div class="card"><h2>Opening stock &amp; cash</h2><div class="row">' + inp('o_sili', 'Sili 999 (' + unitOf('silver') + ')', O.sili, 'n') + inp('o_silver', 'Silver (' + unitOf('silver') + ')', O.silver, 'n') + '</div><div class="row">' + inp('o_rupa', 'Rupa weight', O.rupa, 'n') + inp('o_rupaFine', 'Rupa fine', O.rupaFine, 'n') + '</div><div class="row">' + inp('o_gold', 'Gold (' + unitOf('gold') + ')', O.gold, 'n') + '<span></span></div><div class="row">' + inp('o_kaccha', 'Kaccha weight', O.kaccha, 'n') + inp('o_kacchaFine', 'Kaccha fine', O.kacchaFine, 'n') + '</div><div class="row">' + inp('o_cash', 'Cash in hand (₹)', O.cash, 'n') + '<span></span>' + '</div><p class="muted" style="font-size:12px">For old party balances use Baki/Jama → + Entry.</p></div>';
   h += '<div class="btns"><button class="btn gold" onclick="App.saveSettings()">Save settings</button></div>';
   return h;
@@ -1026,7 +1031,7 @@ function saveSettings() {
   S.gstOn = false;
   S.units.silver.unit = $('s_su').value; S.units.silver.ratePer = num($('s_sr').value) || 1; S.units.gold.unit = $('s_gu').value; S.units.gold.ratePer = num($('s_gr').value) || 1;
   ITEM_KEYS.forEach(function (k) { S.stockItems[k] = $('s_st_' + k).checked; });
-  S.sellPrefix = $('s_sp').value; S.buyPrefix = $('s_bp').value; D.seq.sell = Math.max(1, Math.floor(num($('s_sn').value))); D.seq.buy = Math.max(1, Math.floor(num($('s_bn').value)));
+  S.sellPrefix = $('s_sp').value; S.buyPrefix = $('s_bp').value; 
   ['sili', 'silver', 'rupa', 'rupaFine', 'gold', 'kaccha', 'kacchaFine', 'cash'].forEach(function (k) { O[k] = num($('o_' + k).value); });
   save(); toast('Settings saved'); back();
 }
