@@ -527,7 +527,7 @@ V.bill = function (id) {
 };
 V.bill_after = function (id) {
   var b = billById(id); if (!b) return;
-  var f = $('pv'), paper = D.settings.paper, wide = !(paper === '58' || paper === '80');
+  var f = $('pv'), paper = D.settings.paper, wide = !(paper === '58' || paper === '80' || paper === 'slip');
   f.srcdoc = billHtml(b, paper === 'ask' ? '80' : paper);
   f.onload = function () {
     try {
@@ -549,12 +549,12 @@ function delBill(id) {
 
 /* ---------- printing ---------- */
 function billHtml(b, paper) {
-  var S = D.settings, thermal = paper === '58' || paper === '80';
-  var width = paper === '58' ? '54mm' : paper === '80' ? '74mm' : '190mm';
+  var S = D.settings, slip = paper === 'slip', thermal = paper === '58' || paper === '80' || slip;
+  var width = paper === '58' ? '54mm' : paper === '80' ? '74mm' : slip ? '67mm' : '190mm';
   var party = partyById(b.partyId) || {};
   var title = b.type === 'sell' ? (b.gstOn ? 'TAX INVOICE' : 'SALE BILL') : 'PURCHASE BILL';
-  var css = '@page{size:' + (thermal ? (paper === '58' ? '58mm' : '80mm') + ' auto' : (paper === 'a5' ? 'A5' : 'A4')) + ';margin:' + (thermal ? '2mm' : '10mm') + '}' +
-    'body{font-family:Arial,Helvetica,sans-serif;color:#000;margin:0 auto;width:' + width + ';font-size:' + (thermal ? (paper === '58' ? '10px' : '11.5px') : '12.5px') + '}' +
+  var css = '@page{size:' + (slip ? '73mm 105mm' : thermal ? (paper === '58' ? '58mm' : '80mm') + ' auto' : (paper === 'a5' ? 'A5' : 'A4')) + ';margin:' + (slip ? '3mm' : thermal ? '2mm' : '10mm') + '}' +
+    'body{font-family:Arial,Helvetica,sans-serif;color:#000;margin:0 auto;width:' + width + ';font-size:' + (thermal ? (paper === '58' || slip ? '10px' : '11.5px') : '12.5px') + '}' +
     'h1{font-size:' + (thermal ? '15px' : '22px') + ';margin:0}.c{text-align:center}.r{text-align:right}table{width:100%;border-collapse:collapse}' +
     'th,td{padding:' + (thermal ? '2px 1px' : '5px 6px') + ';vertical-align:top}' +
     (thermal ? 'th{border-bottom:1px dashed #000;text-align:left}.hr{border-top:1px dashed #000;margin:4px 0}' : 'th,td.b{border:1px solid #555}th{background:#f1e7cf;text-align:left}.hr{border-top:1px solid #000;margin:8px 0}.box{border:1px solid #555;padding:8px}') +
@@ -619,7 +619,7 @@ function printBill(id, paper) {
   var b = billById(id);
   paper = paper || D.settings.paper;
   if (!paper || paper === 'ask') {
-    openModal('<h3>Print size</h3><div class="btns"><button class="btn" onclick="App.closeModal();App.printBill(\'' + id + '\',\'58\')">2 inch (58mm)</button><button class="btn" onclick="App.closeModal();App.printBill(\'' + id + '\',\'80\')">3 inch (80mm)</button><button class="btn" onclick="App.closeModal();App.printBill(\'' + id + '\',\'a4\')">A4 / PDF</button></div>');
+    openModal('<h3>Print size</h3><div class="btns"><button class="btn" onclick="App.closeModal();App.printBill(\'' + id + '\',\'58\')">2 inch (58mm)</button><button class="btn" onclick="App.closeModal();App.printBill(\'' + id + '\',\'80\')">3 inch (80mm)</button><button class="btn" onclick="App.closeModal();App.printBill(\'' + id + '\',\'slip\')">Slip 7.3×10.5 cm</button><button class="btn" onclick="App.closeModal();App.printBill(\'' + id + '\',\'a4\')">A4 / PDF</button></div>');
     return;
   }
   printHtml(billHtml(b, paper), 'Bill ' + b.no, paper);
@@ -1032,7 +1032,7 @@ V.more = function () {
   var items = [['registers', 'Bill Registers', 'Silver, Sili 999, Rupa, Gold, Kaccha with ratios'], ['stock', 'Stock & Cash', 'Stock statement, cash in/out, expenses'], ['daybook', 'Day Book', 'Everything on one day, day report'], ['parties', 'Parties', 'Customers & suppliers'], ['printer', 'Printer', 'Bill size, Bluetooth thermal printer'], ['backup', 'Backup & Excel', 'Export to Excel, backup, restore'], ['settings', 'Settings', 'Shop details, GST, units, opening stock']];
   if (window.Cloud && Cloud.enabled && Cloud.isOwner) items.push(['users', 'Staff logins', 'Who can open this shop on other phones / laptops']);
   if (window.Cloud && Cloud.enabled && Cloud.user) items.push(['__signout', 'Sign out', 'Signed in as ' + esc(Cloud.user.email)]);
-  return '<div class="card menu"><div class="list">' + items.map(function (x) { return '<div class="it" onclick="' + (x[0] === '__signout' ? 'Cloud.signOut()' : 'App.go(\'' + x[0] + '\')') + '"><div class="l"><b>' + x[1] + '</b><small>' + x[2] + '</small></div><div class="r">&#8250;</div></div>'; }).join('') + '</div></div><p class="muted c" style="font-size:12px">Bullion Book 2.2 · ' + (window.Cloud && Cloud.enabled ? 'data saved online and on this device' : 'all data stays on this phone') + '</p>';
+  return '<div class="card menu"><div class="list">' + items.map(function (x) { return '<div class="it" onclick="' + (x[0] === '__signout' ? 'Cloud.signOut()' : 'App.go(\'' + x[0] + '\')') + '"><div class="l"><b>' + x[1] + '</b><small>' + x[2] + '</small></div><div class="r">&#8250;</div></div>'; }).join('') + '</div></div><p class="muted c" style="font-size:12px">Bullion Book 2.3 · ' + (window.Cloud && Cloud.enabled ? 'data saved online and on this device' : 'all data stays on this phone') + '</p>';
 };
 V.parties = function () {
   var c = compute();
@@ -1079,7 +1079,7 @@ function saveSettings() {
 /* ----- Printer ----- */
 V.printer = function () {
   var S = D.settings;
-  var h = '<div class="card"><h2>Default bill size</h2><div class="seg">' + [['58', '2 inch'], ['80', '3 inch'], ['a4', 'A4'], ['ask', 'Ask']].map(function (x) { return '<button class="' + (S.paper === x[0] ? 'on' : '') + '" onclick="App.setPaper(\'' + x[0] + '\')">' + x[1] + '</button>'; }).join('') + '</div><p class="muted" style="font-size:12px">"Print / PDF" opens the Android print screen: choose a Wi-Fi/USB printer or <b>Save as PDF</b> to send on WhatsApp.</p></div>';
+  var h = '<div class="card"><h2>Default bill size</h2><div class="seg">' + [['58', '2 inch'], ['80', '3 inch'], ['slip', '7.3×10.5 cm'], ['a4', 'A4'], ['ask', 'Ask']].map(function (x) { return '<button class="' + (S.paper === x[0] ? 'on' : '') + '" onclick="App.setPaper(\'' + x[0] + '\')">' + x[1] + '</button>'; }).join('') + '</div><p class="muted" style="font-size:12px"><b>Laptop slip 7.3×10.5 cm:</b> in Chrome print choose Canon LBP2900 → More settings → Paper size = your slip size, Margins = None, Scale = 100. Put the slip in the printer\'s manual feed, centred, short side first.</p><p class="muted" style="font-size:12px">"Print / PDF" opens the Android print screen: choose a Wi-Fi/USB printer or <b>Save as PDF</b> to send on WhatsApp.</p></div>';
   if (HAS_APP) {
     h += '<div class="card"><h2>Bluetooth thermal printer</h2><p class="muted" style="font-size:12px">Pair the printer in phone Bluetooth settings first (PIN is usually 0000 or 1234), then pick it here.</p>';
     h += '<div>Selected: <b>' + esc(S.btName || 'None') + '</b></div><div class="seg" style="margin-top:10px"><button class="' + (num(S.btWidth) === 32 ? 'on' : '') + '" onclick="App.setBtW(32)">58mm (32 chars)</button><button class="' + (num(S.btWidth) === 48 ? 'on' : '') + '" onclick="App.setBtW(48)">80mm (48 chars)</button></div>';
