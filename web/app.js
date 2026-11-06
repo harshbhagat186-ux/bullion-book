@@ -10,7 +10,7 @@ var ITEMS = {
   rupa:   { name: 'Silver Rupa', short: 'Rupa',     metal: 'silver', touch: true },
   gold:   { name: 'Gold',        short: 'Gold',     metal: 'gold',   touch: false },
   kaccha: { name: 'Gold Kaccha', short: 'Kaccha',   metal: 'gold',   touch: true },
-  coin:   { name: 'Gold Coin (Gini)', short: 'Gini', metal: 'gold', touch: false }
+  coin:   { name: 'Gold Coin (Gini)', short: 'Gini', metal: 'gold', touch: false, majuri: true }
 };
 var ALL_KEYS = ['bs', 'silver', 'sili', 'rupa', 'gold', 'kaccha', 'coin'];
 var ITEM_KEYS = ['silver', 'sili', 'rupa', 'gold', 'kaccha', 'coin'];
@@ -158,12 +158,14 @@ function lineCalc(l) {
   if (!(l.rw > 0 && l.rw < l.weight)) l.rw = 0;          // rate fixed on part of the weight only
   var base = l.rw ? (it.touch ? r3(l.rw * l.touch / 100) : l.rw) : (it.touch ? l.fine : l.weight);
   l.back = !!l.back;                                      // exchange: goes the other way (given back / taken back)
-  l.amount = (l.back ? -1 : 1) * Math.round(base * l.rate / ratePer(metal));
+  l.mj = it.majuri ? num(l.mj) : 0;                      // making charge (majuri) in cash, e.g. Gini
+  l.amount = (l.back ? -1 : 1) * (Math.round(base * l.rate / ratePer(metal)) + l.mj);
   return l;
 }
 function lineDir(b, l) { return l.back ? (b.type === 'buy' ? 'sell' : 'buy') : b.type; }
 function lineName(b, l) { return ITEMS[l.item].name + (l.back ? (b.type === 'buy' ? ' (given to party)' : ' (taken from party)') : ''); }
-function lineNote(l, b) { return l.rw ? 'Rate on ' + w(l.rw) + ' · Fine ' + (b && b.type === 'sell' ? 'given ' : 'received ') + w(lineMetalFine(l)) : ''; }
+function lineNote(l, b) { return [lineNote0(l, b), l.mj ? 'Majuri \u20b9' + inr(l.mj) : ''].filter(Boolean).join(' · '); }
+function lineNote0(l, b) { return l.rw ? 'Rate on ' + w(l.rw) + ' · Fine ' + (b && b.type === 'sell' ? 'given ' : 'received ') + w(lineMetalFine(l)) : ''; }
 /* Metal settled as fine (no rate): unrated part of a line, or an unrated exchange line. */
 function lineMetalFine(l) {
   var it = ITEMS[l.item];
@@ -428,6 +430,7 @@ function lineForm(l, i) {
   h += '<div class="row"><label class="f"><span>Weight (' + unitOf(m) + ')</span><input class="bigin" type="number" step="any" inputmode="decimal" data-i="' + i + '" data-k="weight" value="' + esc(l.weight) + '" oninput="App.lineIn(this)"></label>';
   if (it.touch) h += '<label class="f"><span>Touch %</span><input class="bigin" type="number" step="any" inputmode="decimal" data-i="' + i + '" data-k="touch" value="' + esc(l.touch) + '" oninput="App.lineIn(this)"></label>';
   h += '</div><div class="row"><label class="f"><span>Rate ' + rateLbl(m) + (l.back ? ' <small>(blank if free)</small>' : '') + '</span><input class="bigin" type="number" step="any" inputmode="decimal" data-i="' + i + '" data-k="rate" value="' + esc(l.rate) + '" oninput="App.lineIn(this)"></label>';
+  if (it.majuri) h += '<label class="f"><span>Majuri (₹) <small>cash</small></span><input type="number" step="any" inputmode="decimal" data-i="' + i + '" data-k="mj" value="' + esc(l.mj || '') + '" oninput="App.lineIn(this)"></label>';
   if (!l.back) h += '<label class="f"><span>Rate fixed on (' + unitOf(m) + ') <small>blank = all</small></span><input type="number" step="any" inputmode="decimal" data-i="' + i + '" data-k="rw" value="' + esc(l.rw || '') + '" oninput="App.lineIn(this)"></label>';
   h += '</div><div class="muted" style="font-size:12px" id="lr' + i + '"></div>';
   if (it.touch) h += '<div class="sum"><span class="muted">Fine</span><b id="lf' + i + '"></b></div>';
@@ -472,7 +475,7 @@ function saveBill(print) {
   if (!lines.length) { toast('Enter weight / quantity'); return; }
   for (var i = 0; i < lines.length; i++) { if (ITEMS[lines[i].item].touch && !num(lines[i].touch)) { toast('Enter touch for ' + ITEMS[lines[i].item].name); return; } }
   var p = F.partyName ? ensureParty(F.partyName, F.phone) : null;
-  var b = { id: F.id || uid(), type: F.type, no: F.no, date: F.date, time: F.time, partyId: p ? p.id : '', partyName: p ? p.name : '', lines: lines.map(function (l) { var o = { item: l.item, weight: l.weight, touch: l.touch, rate: l.rate }; if (num(l.rw)) o.rw = l.rw; if (l.back) o.back = true; return o; }), gstOn: F.gstOn, gstRate: F.gstRate, gstInter: F.gstInter, paid: F.paid === '' ? 0 : F.paid, mode: F.mode, note: F.note, createdAt: F.createdAt || new Date().toISOString() };
+  var b = { id: F.id || uid(), type: F.type, no: F.no, date: F.date, time: F.time, partyId: p ? p.id : '', partyName: p ? p.name : '', lines: lines.map(function (l) { var o = { item: l.item, weight: l.weight, touch: l.touch, rate: l.rate }; if (num(l.rw)) o.rw = l.rw; if (num(l.mj)) o.mj = l.mj; if (l.back) o.back = true; return o; }), gstOn: F.gstOn, gstRate: F.gstRate, gstInter: F.gstInter, paid: F.paid === '' ? 0 : F.paid, mode: F.mode, note: F.note, createdAt: F.createdAt || new Date().toISOString() };
   billCalc(b);
   if (!p && Math.abs(b.due) >= 1) { toast('Enter a party name: this bill has a balance of ' + money(b.due)); return; }
   var bm0 = billMetal(b);
@@ -507,7 +510,7 @@ V.bill = function (id) {
   var h = '<div class="card"><div class="sum"><span><span class="pill ' + b.type + '">' + (b.type === 'sell' ? 'SALE' : 'PURCHASE') + '</span> <b>' + esc(b.no) + '</b></span><span>' + fd(b.date) + ' ' + esc(b.time) + '</span></div>';
   h += '<div class="sum"><span>Party</span><b>' + (b.partyId ? '<a href="#" onclick="App.go(\'party\',\'' + b.partyId + '\');return false">' + esc(b.partyName) + '</a>' : 'Cash') + '</b></div>';
   h += '<div class="tw" style="margin:8px 0"><table class="t"><thead><tr><th>Item</th><th class="n">Wt</th><th class="n">Touch</th><th class="n">Fine</th><th class="n">Rate</th><th class="n">Amount</th></tr></thead><tbody>';
-  b.lines.forEach(function (l) { var it = ITEMS[l.item]; h += '<tr><td>' + lineName(b, l) + (l.rw ? '<br><small class="muted">' + lineNote(l, b) + '</small>' : '') + '</td><td class="n">' + w(l.weight) + '</td><td class="n">' + (it.touch ? l.touch : '') + '</td><td class="n">' + (it.touch ? w(l.fine) : '') + '</td><td class="n">' + inr(l.rate) + '</td><td class="n">' + inr(l.amount) + '</td></tr>'; });
+  b.lines.forEach(function (l) { var it = ITEMS[l.item]; h += '<tr><td>' + lineName(b, l) + (lineNote(l, b) ? '<br><small class="muted">' + lineNote(l, b) + '</small>' : '') + '</td><td class="n">' + w(l.weight) + '</td><td class="n">' + (it.touch ? l.touch : '') + '</td><td class="n">' + (it.touch ? w(l.fine) : '') + '</td><td class="n">' + inr(l.rate) + '</td><td class="n">' + inr(l.amount) + '</td></tr>'; });
   h += '</tbody></table></div>';
   if (b.gstOn) h += '<div class="sum"><span>GST ' + b.gstRate + '%</span><span>' + moneyP(b.cgst + b.sgst + b.igst) + '</span></div>';
   h += '<div class="sum big"><span>Total</span><span>' + money(b.total) + '</span></div>' + metalHtml(b);
@@ -563,7 +566,7 @@ function billHtml(b, paper) {
     h += '<table><tr><th>Item</th><th class="r">Wt</th><th class="r">Rate</th><th class="r">Amt</th></tr>';
     b.lines.forEach(function (l) {
       var it = ITEMS[l.item];
-      h += '<tr><td>' + lineName(b, l) + (l.rw ? '<br><span class="muted">' + lineNote(l, b) + '</span>' : '') + (it.touch ? '<br><span class="muted">T ' + l.touch + '% F ' + w(l.fine) + '</span>' : '') + '</td><td class="r">' + w(l.weight) + '<br><span class="muted">' + unitOf(it.metal) + '</span></td><td class="r">' + inr(l.rate) + '</td><td class="r">' + inr(l.amount) + '</td></tr>';
+      h += '<tr><td>' + lineName(b, l) + (lineNote(l, b) ? '<br><span class="muted">' + lineNote(l, b) + '</span>' : '') + (it.touch ? '<br><span class="muted">T ' + l.touch + '% F ' + w(l.fine) + '</span>' : '') + '</td><td class="r">' + w(l.weight) + '<br><span class="muted">' + unitOf(it.metal) + '</span></td><td class="r">' + inr(l.rate) + '</td><td class="r">' + inr(l.amount) + '</td></tr>';
     });
     h += '</table><div class="hr"></div><table>';
   } else {
@@ -572,7 +575,7 @@ function billHtml(b, paper) {
     h += '<table><tr><th>#</th><th>Description</th><th class="r">Weight</th><th class="r">Touch</th><th class="r">Fine</th><th class="r">Rate</th><th class="r">Amount (₹)</th></tr>';
     b.lines.forEach(function (l, i) {
       var it = ITEMS[l.item];
-      h += '<tr><td class="b">' + (i + 1) + '</td><td class="b">' + lineName(b, l) + (l.rw ? '<br><small>' + lineNote(l, b) + '</small>' : '') + '</td><td class="b r">' + w(l.weight, it.metal) + '</td><td class="b r">' + (it.touch ? l.touch + '%' : '') + '</td><td class="b r">' + (it.touch ? w(l.fine) : '') + '</td><td class="b r">' + inr(l.rate) + '<br><small>' + rateLbl(it.metal) + '</small></td><td class="b r">' + inr(l.amount, 2) + '</td></tr>';
+      h += '<tr><td class="b">' + (i + 1) + '</td><td class="b">' + lineName(b, l) + (lineNote(l, b) ? '<br><small>' + lineNote(l, b) + '</small>' : '') + '</td><td class="b r">' + w(l.weight, it.metal) + '</td><td class="b r">' + (it.touch ? l.touch + '%' : '') + '</td><td class="b r">' + (it.touch ? w(l.fine) : '') + '</td><td class="b r">' + inr(l.rate) + '<br><small>' + rateLbl(it.metal) + '</small></td><td class="b r">' + inr(l.amount, 2) + '</td></tr>';
     });
     h += '</table><table style="margin-top:8px"><tr><td style="width:55%" class="muted">Amount in words:<br><b>Rupees ' + amountWords(b.total) + ' Only</b></td><td><table>';
   }
@@ -650,7 +653,7 @@ function billText(b, W) {
   b.lines.forEach(function (l) {
     var it = ITEMS[l.item];
     L.push({ t: lineName(b, l), b: 1 });
-    if (l.rw) L.push(' ' + lineNote(l, b));
+    if (lineNote(l, b)) L.push(' ' + lineNote(l, b));
     if (it.touch) L.push(lr(' Wt ' + w(l.weight) + ' T ' + l.touch + '%', 'Fine ' + w(l.fine), W));
     L.push(lr(' ' + (l.rw ? w(l.rw) : it.touch ? w(l.fine) : w(l.weight)) + ' ' + unitOf(it.metal) + ' x ' + inr(l.rate), inr(l.amount), W));
   });
@@ -678,7 +681,7 @@ function btPrintBill(id) {
 function shareBill(id) {
   var b = billById(id), S = D.settings;
   var t = S.shopName + '\n' + (b.type === 'sell' ? 'Sale' : 'Purchase') + ' bill ' + b.no + ' · ' + fd(b.date) + '\n' + (b.partyName || 'Cash') + '\n';
-  b.lines.forEach(function (l) { var it = ITEMS[l.item]; t += lineName(b, l) + (l.rw ? ' [' + lineNote(l, b) + ']' : '') + ': ' + w(l.weight, it.metal) + (it.touch ? ' @' + l.touch + '% = ' + w(l.fine, it.metal) + ' fine' : '') + ' x ' + inr(l.rate) + ' = Rs.' + inr(l.amount) + '\n'; });
+  b.lines.forEach(function (l) { var it = ITEMS[l.item]; t += lineName(b, l) + (lineNote(l, b) ? ' [' + lineNote(l, b) + ']' : '') + ': ' + w(l.weight, it.metal) + (it.touch ? ' @' + l.touch + '% = ' + w(l.fine, it.metal) + ' fine' : '') + ' x ' + inr(l.rate) + ' = Rs.' + inr(l.amount) + '\n'; });
   if (b.gstOn) t += 'GST ' + b.gstRate + '%: Rs.' + inr(b.cgst + b.sgst + b.igst, 2) + '\n';
   t += 'Total: Rs.' + inr(b.total) + '\n' + (b.type === 'sell' ? 'Received' : 'Paid') + ': Rs.' + inr(b.paid);
   if (Math.abs(b.due) >= 1) t += '\nBalance: Rs.' + inr(b.due);
@@ -1027,7 +1030,7 @@ V.more = function () {
   var items = [['registers', 'Bill Registers', 'Silver, Sili 999, Rupa, Gold, Kaccha with ratios'], ['stock', 'Stock & Cash', 'Stock statement, cash in/out, expenses'], ['daybook', 'Day Book', 'Everything on one day, day report'], ['parties', 'Parties', 'Customers & suppliers'], ['printer', 'Printer', 'Bill size, Bluetooth thermal printer'], ['backup', 'Backup & Excel', 'Export to Excel, backup, restore'], ['settings', 'Settings', 'Shop details, GST, units, opening stock']];
   if (window.Cloud && Cloud.enabled && Cloud.isOwner) items.push(['users', 'Staff logins', 'Who can open this shop on other phones / laptops']);
   if (window.Cloud && Cloud.enabled && Cloud.user) items.push(['__signout', 'Sign out', 'Signed in as ' + esc(Cloud.user.email)]);
-  return '<div class="card menu"><div class="list">' + items.map(function (x) { return '<div class="it" onclick="' + (x[0] === '__signout' ? 'Cloud.signOut()' : 'App.go(\'' + x[0] + '\')') + '"><div class="l"><b>' + x[1] + '</b><small>' + x[2] + '</small></div><div class="r">&#8250;</div></div>'; }).join('') + '</div></div><p class="muted c" style="font-size:12px">Bullion Book 1.9 · ' + (window.Cloud && Cloud.enabled ? 'data saved online and on this device' : 'all data stays on this phone') + '</p>';
+  return '<div class="card menu"><div class="list">' + items.map(function (x) { return '<div class="it" onclick="' + (x[0] === '__signout' ? 'Cloud.signOut()' : 'App.go(\'' + x[0] + '\')') + '"><div class="l"><b>' + x[1] + '</b><small>' + x[2] + '</small></div><div class="r">&#8250;</div></div>'; }).join('') + '</div></div><p class="muted c" style="font-size:12px">Bullion Book 2.0 · ' + (window.Cloud && Cloud.enabled ? 'data saved online and on this device' : 'all data stays on this phone') + '</p>';
 };
 V.parties = function () {
   var c = compute();
