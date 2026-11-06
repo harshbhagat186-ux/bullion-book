@@ -165,11 +165,12 @@ function lineCalc(l) {
 function lineDir(b, l) { return l.back ? (b.type === 'buy' ? 'sell' : 'buy') : b.type; }
 function lineName(b, l) { return ITEMS[l.item].name + (l.back ? (b.type === 'buy' ? ' (given to party)' : ' (taken from party)') : ''); }
 function lineNote(l, b) { return [lineNote0(l, b), l.mj ? 'Majuri \u20b9' + inr(l.mj) : ''].filter(Boolean).join(' · '); }
-function lineNote0(l, b) { return l.rw ? 'Rate on ' + w(l.rw) + ' · Fine ' + (b && b.type === 'sell' ? 'given ' : 'received ') + w(lineMetalFine(l)) : ''; }
+function lineNote0(l, b) { if (!l.back && !l.rate && l.fine) return 'No rate · Fine ' + (b && b.type === 'sell' ? 'given ' : 'received ') + w(l.fine); return l.rw ? 'Rate on ' + w(l.rw) + ' · Fine ' + (b && b.type === 'sell' ? 'given ' : 'received ') + w(lineMetalFine(l)) : ''; }
 /* Metal settled as fine (no rate): unrated part of a line, or an unrated exchange line. */
 function lineMetalFine(l) {
   var it = ITEMS[l.item];
   if (l.back) return l.rate ? 0 : l.fine;
+  if (!l.rate) return l.fine;                            // no rate: whole fine settled in metal
   if (!l.rw) return 0;
   var u = r3(l.weight - l.rw);
   return it.touch ? r3(u * l.touch / 100) : u;
@@ -408,7 +409,7 @@ V.newbill = function (id) {
   h += '<div class="card"><label class="f"><span>Party name <small>(leave blank for cash customer)</small></span><input id="f_party" list="plist" autocomplete="off" value="' + esc(F.partyName) + '" placeholder="Type name" oninput="App.partyHint()"></label>' + partyDatalist();
   h += '<div id="f_phint" class="muted" style="font-size:12px;margin:-6px 0 0"></div></div>';
   h += '<div id="f_lines">' + F.lines.map(lineForm).join('') + '</div>';
-  h += '<div class="btns" style="margin-bottom:12px"><button class="btn small" style="flex:1" onclick="App.addLine()">+ Add one more item</button><button class="btn small" style="flex:1" onclick="App.addLine(1)">+ ' + (F.type === 'buy' ? 'Item given to party' : 'Item taken from party') + ' (exchange)</button></div>';
+  h += '<div class="btns" style="margin-bottom:12px"><button class="btn small" style="flex:1" onclick="App.addLine()">+ Add one more item</button><button class="btn small" style="flex:1" onclick="App.addLine(1)">+ ' + (F.type === 'buy' ? 'Fine / item given to party' : 'Fine / item taken from party') + '</button></div>';
   h += '<div class="card"><div id="f_sum"></div>';
   h += '<label class="f"><span id="f_paidlbl">' + (F.type === 'sell' ? 'Money received now (₹)' : 'Money paid now (₹)') + '</span><input id="f_paid" class="bigin" type="number" step="any" inputmode="decimal" value="' + esc(F.paid) + '" oninput="App.paidEdit()"></label>';
   h += '<input type="hidden" id="f_mode" value="cash">';
@@ -1030,7 +1031,7 @@ V.more = function () {
   var items = [['registers', 'Bill Registers', 'Silver, Sili 999, Rupa, Gold, Kaccha with ratios'], ['stock', 'Stock & Cash', 'Stock statement, cash in/out, expenses'], ['daybook', 'Day Book', 'Everything on one day, day report'], ['parties', 'Parties', 'Customers & suppliers'], ['printer', 'Printer', 'Bill size, Bluetooth thermal printer'], ['backup', 'Backup & Excel', 'Export to Excel, backup, restore'], ['settings', 'Settings', 'Shop details, GST, units, opening stock']];
   if (window.Cloud && Cloud.enabled && Cloud.isOwner) items.push(['users', 'Staff logins', 'Who can open this shop on other phones / laptops']);
   if (window.Cloud && Cloud.enabled && Cloud.user) items.push(['__signout', 'Sign out', 'Signed in as ' + esc(Cloud.user.email)]);
-  return '<div class="card menu"><div class="list">' + items.map(function (x) { return '<div class="it" onclick="' + (x[0] === '__signout' ? 'Cloud.signOut()' : 'App.go(\'' + x[0] + '\')') + '"><div class="l"><b>' + x[1] + '</b><small>' + x[2] + '</small></div><div class="r">&#8250;</div></div>'; }).join('') + '</div></div><p class="muted c" style="font-size:12px">Bullion Book 2.0 · ' + (window.Cloud && Cloud.enabled ? 'data saved online and on this device' : 'all data stays on this phone') + '</p>';
+  return '<div class="card menu"><div class="list">' + items.map(function (x) { return '<div class="it" onclick="' + (x[0] === '__signout' ? 'Cloud.signOut()' : 'App.go(\'' + x[0] + '\')') + '"><div class="l"><b>' + x[1] + '</b><small>' + x[2] + '</small></div><div class="r">&#8250;</div></div>'; }).join('') + '</div></div><p class="muted c" style="font-size:12px">Bullion Book 2.1 · ' + (window.Cloud && Cloud.enabled ? 'data saved online and on this device' : 'all data stays on this phone') + '</p>';
 };
 V.parties = function () {
   var c = compute();
