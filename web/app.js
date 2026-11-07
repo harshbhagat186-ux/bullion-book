@@ -541,7 +541,9 @@ V.bill = function (id) {
 };
 V.bill_after = function (id) {
   var b = billById(id); if (!b) return;
-  var f = $('pv'), paper = D.settings.paper, wide = !(paper === '58' || paper === '80' || paper === 'slip');
+  var f = $('pv'), paper = D.settings.paper;
+  if (!HAS_APP && (paper === '58' || paper === '80')) paper = 'slip';
+  var wide = !(paper === '58' || paper === '80' || paper === 'slip');
   f.srcdoc = billHtml(b, paper === 'ask' ? '80' : paper);
   f.onload = function () {
     try {
@@ -572,11 +574,11 @@ function billHtml(b, paper) {
   var css = '@page{size:' + (slip ? sw + 'mm ' + sh + 'mm' : thermal ? (paper === '58' ? '58mm' : '80mm') + ' auto' : (paper === 'a5' ? 'A5' : 'A4')) + ';margin:' + (slip ? '0' : thermal ? '2mm' : '10mm') + '}' +
     (slip ? 'html,body{margin:0;padding:0}body{font-family:Arial,Helvetica,sans-serif;color:#000;box-sizing:border-box;width:' + sw + 'mm;height:' + (sh - 2) + 'mm;padding:' + (8 + st) + 'mm 6mm 8mm;display:flex;flex-direction:column;justify-content:center;overflow:hidden;font-size:' + sfs + 'px}.wrap{width:100%}'
       : 'body{font-family:Arial,Helvetica,sans-serif;color:#000;margin:0 auto;width:' + width + ';font-size:' + (thermal ? (paper === '58' ? '10px' : '11.5px') : '12.5px') + '}') +
-    'h1{font-size:' + (slip ? Math.round(sfs * 1.5) + 'px' : thermal ? '15px' : '22px') + ';margin:0}.c{text-align:center}.r{text-align:right}table{width:100%;border-collapse:collapse}' +
+    'h1{font-size:' + (slip ? '1.5em' : thermal ? '15px' : '22px') + ';margin:0}.c{text-align:center}.r{text-align:right}table{width:100%;border-collapse:collapse}' +
     'th,td{padding:' + (thermal ? '2px 1px' : '5px 6px') + ';vertical-align:top}' +
     (thermal ? 'th{border-bottom:1px dashed #000;text-align:left}.hr{border-top:1px dashed #000;margin:4px 0}' : 'th,td.b{border:1px solid #555}th{background:#f1e7cf;text-align:left}.hr{border-top:1px solid #000;margin:8px 0}.box{border:1px solid #555;padding:8px}') +
     (slip ? 'th,td{padding:3px 2px}.hr{margin:6px 0}' : '') +
-    '.tot td{font-weight:bold}.big{font-size:' + (slip ? Math.round(sfs * 1.2) + 'px' : thermal ? '13px' : '16px') + ';font-weight:bold}.muted{color:#444}.ttl{font-weight:bold;letter-spacing:1px}';
+    '.tot td{font-weight:bold}.big{font-size:' + (slip ? '1.2em' : thermal ? '13px' : '16px') + ';font-weight:bold}.muted{color:#444}.ttl{font-weight:bold;letter-spacing:1px}';
   var h = '<!doctype html><html><head><meta charset="utf-8"><style>' + css + '</style></head><body>' + (slip ? '<div class="wrap">' : '');
   h += '<div class="c"><h1>' + esc(S.shopName) + '</h1>' + (S.tagline ? '<div>' + esc(S.tagline) + '</div>' : '') + (S.address ? '<div>' + esc(S.address).replace(/\n/g, '<br>') + '</div>' : '') + (S.phone ? '<div>Ph: ' + esc(S.phone) + '</div>' : '') + '</div>';
   h += '<div class="hr"></div><div class="c ttl">' + title + '</div>';
@@ -618,6 +620,7 @@ function billHtml(b, paper) {
     if (b.note) h += '<div style="margin-top:6px">Note: ' + esc(b.note) + '</div>';
     h += '<table style="margin-top:40px"><tr><td class="muted" style="width:60%">' + esc(S.terms) + '<br>' + esc(S.footer) + '</td><td class="r">For <b>' + esc(S.shopName) + '</b><br><br><br>Authorised Signatory</td></tr></table>';
   }
+  if (slip) h += '<script>(function(){var b=document.body,w=document.querySelector(".wrap");if(!w)return;var cs=getComputedStyle(b),av=b.clientHeight-parseFloat(cs.paddingTop)-parseFloat(cs.paddingBottom),f=parseFloat(cs.fontSize);function ok(){return w.scrollHeight<=av&&w.scrollWidth<=w.clientWidth+1;}while(f<34){b.style.fontSize=(f+0.5)+"px";if(!ok()){b.style.fontSize=f+"px";break;}f+=0.5;}while(!ok()&&f>8){f-=0.5;b.style.fontSize=f+"px";}})();</script>';
   return h + '</body></html>';
 }
 function slipCfg(S) {
@@ -640,6 +643,7 @@ function printHtml(html, job, paper) {
 function printBill(id, paper) {
   var b = billById(id);
   paper = paper || D.settings.paper;
+  if (!HAS_APP && (paper === '58' || paper === '80')) paper = 'slip';
   if (!paper || paper === 'ask') {
     openModal('<h3>Print size</h3><div class="btns"><button class="btn" onclick="App.closeModal();App.printBill(\'' + id + '\',\'58\')">2 inch (58mm)</button><button class="btn" onclick="App.closeModal();App.printBill(\'' + id + '\',\'80\')">3 inch (80mm)</button><button class="btn" onclick="App.closeModal();App.printBill(\'' + id + '\',\'slip\')">Slip (laptop)</button><button class="btn" onclick="App.closeModal();App.printBill(\'' + id + '\',\'a4\')">A4 / PDF</button></div>');
     return;
@@ -1054,7 +1058,7 @@ V.more = function () {
   var items = [['registers', 'Bill Registers', 'Silver, Sili 999, Rupa, Gold, Kaccha with ratios'], ['stock', 'Stock & Cash', 'Stock statement, cash in/out, expenses'], ['daybook', 'Day Book', 'Everything on one day, day report'], ['parties', 'Parties', 'Customers & suppliers'], ['printer', 'Printer', 'Bill size, Bluetooth thermal printer'], ['backup', 'Backup & Excel', 'Export to Excel, backup, restore'], ['settings', 'Settings', 'Shop details, GST, units, opening stock']];
   if (window.Cloud && Cloud.enabled && Cloud.isOwner) items.push(['users', 'Staff logins', 'Who can open this shop on other phones / laptops']);
   if (window.Cloud && Cloud.enabled && Cloud.user) items.push(['__signout', 'Sign out', 'Signed in as ' + esc(Cloud.user.email)]);
-  return '<div class="card menu"><div class="list">' + items.map(function (x) { return '<div class="it" onclick="' + (x[0] === '__signout' ? 'Cloud.signOut()' : 'App.go(\'' + x[0] + '\')') + '"><div class="l"><b>' + x[1] + '</b><small>' + x[2] + '</small></div><div class="r">&#8250;</div></div>'; }).join('') + '</div></div><p class="muted c" style="font-size:12px">Bullion Book 3.1 · ' + (window.Cloud && Cloud.enabled ? 'data saved online and on this device' : 'all data stays on this phone') + '</p>';
+  return '<div class="card menu"><div class="list">' + items.map(function (x) { return '<div class="it" onclick="' + (x[0] === '__signout' ? 'Cloud.signOut()' : 'App.go(\'' + x[0] + '\')') + '"><div class="l"><b>' + x[1] + '</b><small>' + x[2] + '</small></div><div class="r">&#8250;</div></div>'; }).join('') + '</div></div><p class="muted c" style="font-size:12px">Bullion Book 3.2 · ' + (window.Cloud && Cloud.enabled ? 'data saved online and on this device' : 'all data stays on this phone') + '</p>';
 };
 V.parties = function () {
   var c = compute();
