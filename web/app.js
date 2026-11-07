@@ -322,7 +322,8 @@ V.home = function () {
   var todays = D.bills.filter(function (b) { return b.date === t; });
   var sold = 0, bought = 0;
   todays.forEach(function (b) { if (b.type === 'sell') sold += b.total; else bought += b.total; });
-  var baki = { cash: 0, silver: 0, gold: 0 }, jama = { cash: 0, silver: 0, gold: 0 };
+  var baki = { cash: 0, silver: 0, gold: 0 }, jama = { cash: 0, silver: 0, gold: 0 }, tb = { cash: 0, silver: 0, gold: 0 }, tj = { cash: 0, silver: 0, gold: 0 };
+  Object.keys(c.party).forEach(function (id) { ACCTS.forEach(function (a) { var v = c.party[id][a]; if (v > 0.0005) tb[a] += v; else if (v < -0.0005) tj[a] -= v; }); });
   Object.keys(full.party).forEach(function (id) { ACCTS.forEach(function (a) { var v = full.party[id][a]; if (v > 0.0005) baki[a] += v; else if (v < -0.0005) jama[a] -= v; }); });
   function metalLine(o) { var p = []; if (o.silver > 0.0005) p.push('Silver ' + w(o.silver, 'silver')); if (o.gold > 0.0005) p.push('Gold ' + w(o.gold, 'gold')); return p.join(' · '); }
   var h = '<div class="big4">';
@@ -336,8 +337,10 @@ V.home = function () {
   h += tile('Silver today', w(c.metal.silver, 'silver'), 'net in/out', 'silver');
   h += tile('Gold today', w(c.metal.gold, 'gold'), 'net in/out', 'gold');
   h += tile('Today', 'Sold ' + money(sold), 'Bought ' + money(bought));
-  h += '<div class="tile click" onclick="App.nav(\'baki\')"><div class="k baki">To receive (Baki)</div><div class="v baki">' + money(baki.cash) + '</div><div class="s">' + metalLine(baki) + '</div></div>';
-  h += '<div class="tile click" onclick="App.setBJ({tab:\'jama\'});App.nav(\'baki\')"><div class="k jama">To pay (Jama)</div><div class="v jama">' + money(jama.cash) + '</div><div class="s">' + metalLine(jama) + '</div></div>';
+  h += '<div class="tile click" onclick="App.nav(\'baki\')"><div class="k baki">Total Baki (all customers)</div><div class="v baki">' + money(baki.cash) + '</div><div class="s">' + metalLine(baki) + '</div></div>';
+  h += '<div class="tile click" onclick="App.setBJ({tab:\'jama\'});App.nav(\'baki\')"><div class="k jama">Total Jama (all customers)</div><div class="v jama">' + money(jama.cash) + '</div><div class="s">' + metalLine(jama) + '</div></div>';
+  h += '<div class="tile"><div class="k baki">Baki today</div><div class="v baki">' + money(tb.cash) + '</div><div class="s">' + metalLine(tb) + '</div></div>';
+  h += '<div class="tile"><div class="k jama">Jama today</div><div class="v jama">' + money(tj.cash) + '</div><div class="s">' + metalLine(tj) + '</div></div>';
   h += '</div>';
   h += '<div class="btns" style="margin-bottom:12px"><button class="btn gold" style="flex:1" onclick="App.setDB(\'\');App.go(\'daybook\')">Today\'s hisab</button><button class="btn" onclick="App.setDB(\'\');App.waDay()">WhatsApp</button></div>';
   h += '<div class="card"><h2>Today by item <small class="muted" style="font-weight:400">(starts at 0 every day · full stock: More → Stock)</small></h2><div class="tw"><table class="t"><thead><tr><th>Item</th><th class="n">Closing</th><th class="n">Fine</th><th class="n">Buy ratio</th><th class="n">Sell ratio</th></tr></thead><tbody>';
