@@ -42,7 +42,7 @@ function blank() {
       units: { silver: { unit: 'kg', ratePer: 1 }, gold: { unit: 'g', ratePer: 10 } },
       hsn: { silver: '7106', gold: '7108' },
       stockItems: { bs: true, silver: true, sili: true, rupa: true, gold: true, kaccha: true, coin: true },
-      paper: '80', slipW: 135, slipH: 210, slipTop: 0, btPrinter: '', btName: '', btWidth: 32
+      paper: '80', slipW: 102, slipH: 155, slipTop: 0, btPrinter: '', btName: '', btWidth: 32
     },
     opening: { bs: 0, silver: 0, sili: 0, rupa: 0, rupaFine: 0, gold: 0, kaccha: 0, kacchaFine: 0, coin: 0, cash: 0, bank: 0 },
     seq: { sell: 1, buy: 1 },
@@ -620,12 +620,13 @@ function billHtml(b, paper) {
     if (b.note) h += '<div style="margin-top:6px">Note: ' + esc(b.note) + '</div>';
     h += '<table style="margin-top:40px"><tr><td class="muted" style="width:60%">' + esc(S.terms) + '<br>' + esc(S.footer) + '</td><td class="r">For <b>' + esc(S.shopName) + '</b><br><br><br>Authorised Signatory</td></tr></table>';
   }
-  if (slip) h += '<script>(function(){var b=document.body,w=document.querySelector(".wrap");if(!w)return;var cs=getComputedStyle(b),av=b.clientHeight-parseFloat(cs.paddingTop)-parseFloat(cs.paddingBottom),f=parseFloat(cs.fontSize);function ok(){return w.scrollHeight<=av&&w.scrollWidth<=w.clientWidth+1;}while(f<34){b.style.fontSize=(f+0.5)+"px";if(!ok()){b.style.fontSize=f+"px";break;}f+=0.5;}while(!ok()&&f>8){f-=0.5;b.style.fontSize=f+"px";}})();</script>';
+  if (slip) h += '<script>(function(){var b=document.body,w=document.querySelector(".wrap");if(!w)return;var cs=getComputedStyle(b),av=b.clientHeight-parseFloat(cs.paddingTop)-parseFloat(cs.paddingBottom),f=parseFloat(cs.fontSize);function ok(){return w.scrollHeight<=av&&w.scrollWidth<=w.clientWidth+1;}while(f<34){b.style.fontSize=(f+0.5)+"px";if(!ok()){b.style.fontSize=f+"px";break;}f+=0.5;}while(!ok()&&f>8){f-=0.5;b.style.fontSize=f+"px";}var lh=1.15;w.style.lineHeight=lh;while(lh<2.6){w.style.lineHeight=(lh+0.05);if(!ok()){w.style.lineHeight=lh;break;}lh+=0.05;}})();</script>';
   return h + '</body></html>';
 }
 function slipCfg(S) {
-  if (!S.slip34) return { w: 135, h: 210, t: 0, aw: 102, ah: 155 };
-  return { w: num(S.slipW) || 135, h: num(S.slipH) || 210, t: S.slipTop == null ? 0 : num(S.slipTop), aw: num(S.slipAW) || 102, ah: num(S.slipAH) || 155 };
+  if (!S.slip35) return { w: 102, h: 155, t: 0, aw: 92, ah: 143 };
+  var w = num(S.slipW) || 102, h = num(S.slipH) || 155;
+  return { w: w, h: h, t: S.slipTop == null ? 0 : num(S.slipTop), aw: num(S.slipAW) || w - 10, ah: num(S.slipAH) || h - 12 };
 }
 function balancePlain(c) {
   var p = [];
@@ -1058,7 +1059,7 @@ V.more = function () {
   var items = [['registers', 'Bill Registers', 'Silver, Sili 999, Rupa, Gold, Kaccha with ratios'], ['stock', 'Stock & Cash', 'Stock statement, cash in/out, expenses'], ['daybook', 'Day Book', 'Everything on one day, day report'], ['parties', 'Parties', 'Customers & suppliers'], ['printer', 'Printer', 'Bill size, Bluetooth thermal printer'], ['backup', 'Backup & Excel', 'Export to Excel, backup, restore'], ['settings', 'Settings', 'Shop details, GST, units, opening stock']];
   if (window.Cloud && Cloud.enabled && Cloud.isOwner) items.push(['users', 'Staff logins', 'Who can open this shop on other phones / laptops']);
   if (window.Cloud && Cloud.enabled && Cloud.user) items.push(['__signout', 'Sign out', 'Signed in as ' + esc(Cloud.user.email)]);
-  return '<div class="card menu"><div class="list">' + items.map(function (x) { return '<div class="it" onclick="' + (x[0] === '__signout' ? 'Cloud.signOut()' : 'App.go(\'' + x[0] + '\')') + '"><div class="l"><b>' + x[1] + '</b><small>' + x[2] + '</small></div><div class="r">&#8250;</div></div>'; }).join('') + '</div></div><p class="muted c" style="font-size:12px">Bullion Book 3.4 · ' + (window.Cloud && Cloud.enabled ? 'data saved online and on this device' : 'all data stays on this phone') + '</p>';
+  return '<div class="card menu"><div class="list">' + items.map(function (x) { return '<div class="it" onclick="' + (x[0] === '__signout' ? 'Cloud.signOut()' : 'App.go(\'' + x[0] + '\')') + '"><div class="l"><b>' + x[1] + '</b><small>' + x[2] + '</small></div><div class="r">&#8250;</div></div>'; }).join('') + '</div></div><p class="muted c" style="font-size:12px">Bullion Book 3.5 · ' + (window.Cloud && Cloud.enabled ? 'data saved online and on this device' : 'all data stays on this phone') + '</p>';
 };
 V.parties = function () {
   var c = compute();
@@ -1114,7 +1115,7 @@ function resetOpening() {
 /* ----- Printer ----- */
 V.printer = function () {
   var S = D.settings;
-  var h = '<div class="card"><h2>Default bill size</h2><div class="seg">' + [['58', '2 inch'], ['80', '3 inch'], ['slip', 'Slip'], ['a4', 'A4'], ['ask', 'Ask']].map(function (x) { return '<button class="' + (S.paper === x[0] ? 'on' : '') + '" onclick="App.setPaper(\'' + x[0] + '\')">' + x[1] + '</button>'; }).join('') + '</div></div><div class="card"><h2>Slip size (laptop printer)</h2><div class="row"><label class="f"><span>Width (mm)</span><input id="sl_w" type="number" step="any" inputmode="decimal" value="' + slipCfg(S).w + '" onchange="App.setSlip()"></label><label class="f"><span>Height (mm)</span><input id="sl_h" type="number" step="any" inputmode="decimal" value="' + slipCfg(S).h + '" onchange="App.setSlip()"></label></div><div class="row"><label class="f"><span>Print area width (mm)</span><input id="sl_aw" type="number" step="any" inputmode="decimal" value="' + slipCfg(S).aw + '" onchange="App.setSlip()"></label><label class="f"><span>Print area height (mm)</span><input id="sl_ah" type="number" step="any" inputmode="decimal" value="' + slipCfg(S).ah + '" onchange="App.setSlip()"></label></div><label class="f"><span>Move down (mm) <small>bill is centred automatically; use only if it still prints too high</small></span><input id="sl_t" type="number" step="any" inputmode="decimal" value="' + slipCfg(S).t + '" onchange="App.setSlip()"></label><p class="muted" style="font-size:12px">Paper: 135 × 210 mm, bill printed big inside a 102 × 155 mm area in the centre. In the Canon driver set Custom paper size to the paper size (135 × 210 mm). In Chrome print: Pages <b>All</b>, Margins <b>None</b>, Scale <b>Default</b>. Feed the slip short side first, centred, guides touching.</p><p class="muted" style="font-size:12px">"Print / PDF" opens the Android print screen: choose a Wi-Fi/USB printer or <b>Save as PDF</b> to send on WhatsApp.</p></div>';
+  var h = '<div class="card"><h2>Default bill size</h2><div class="seg">' + [['58', '2 inch'], ['80', '3 inch'], ['slip', 'Slip'], ['a4', 'A4'], ['ask', 'Ask']].map(function (x) { return '<button class="' + (S.paper === x[0] ? 'on' : '') + '" onclick="App.setPaper(\'' + x[0] + '\')">' + x[1] + '</button>'; }).join('') + '</div></div><div class="card"><h2>Slip size (laptop printer)</h2><div class="row"><label class="f"><span>Width (mm)</span><input id="sl_w" type="number" step="any" inputmode="decimal" value="' + slipCfg(S).w + '" onchange="App.setSlip()"></label><label class="f"><span>Height (mm)</span><input id="sl_h" type="number" step="any" inputmode="decimal" value="' + slipCfg(S).h + '" onchange="App.setSlip()"></label></div><div class="row"><label class="f"><span>Print area width (mm)</span><input id="sl_aw" type="number" step="any" inputmode="decimal" value="' + slipCfg(S).aw + '" onchange="App.setSlip()"></label><label class="f"><span>Print area height (mm)</span><input id="sl_ah" type="number" step="any" inputmode="decimal" value="' + slipCfg(S).ah + '" onchange="App.setSlip()"></label></div><label class="f"><span>Move down (mm) <small>bill is centred automatically; use only if it still prints too high</small></span><input id="sl_t" type="number" step="any" inputmode="decimal" value="' + slipCfg(S).t + '" onchange="App.setSlip()"></label><p class="muted" style="font-size:12px">Paper: 102 × 155 mm. The bill fills the print area, centred. In the Canon driver set Custom paper size to exactly the same paper size (102 × 155 mm). In Chrome print: Pages <b>All</b>, Margins <b>None</b>, Scale <b>Default</b>. Feed the slip short side first, centred, guides touching.</p><p class="muted" style="font-size:12px">"Print / PDF" opens the Android print screen: choose a Wi-Fi/USB printer or <b>Save as PDF</b> to send on WhatsApp.</p></div>';
   if (HAS_APP) {
     h += '<div class="card"><h2>Bluetooth thermal printer</h2><p class="muted" style="font-size:12px">Pair the printer in phone Bluetooth settings first (PIN is usually 0000 or 1234), then pick it here.</p>';
     h += '<div>Selected: <b>' + esc(S.btName || 'None') + '</b></div><div class="seg" style="margin-top:10px"><button class="' + (num(S.btWidth) === 32 ? 'on' : '') + '" onclick="App.setBtW(32)">58mm (32 chars)</button><button class="' + (num(S.btWidth) === 48 ? 'on' : '') + '" onclick="App.setBtW(48)">80mm (48 chars)</button></div>';
@@ -1125,7 +1126,7 @@ V.printer = function () {
   return h;
 };
 function setPaper(p) { D.settings.paper = p; save(); show(); }
-function setSlip() { var S = D.settings; S.slipW = num($('sl_w').value) || 135; S.slipH = num($('sl_h').value) || 210; S.slipAW = num($('sl_aw').value) || 102; S.slipAH = num($('sl_ah').value) || 155; S.slipTop = $('sl_t').value === '' ? 0 : num($('sl_t').value); S.slip34 = true; save(); toast('Slip size saved'); }
+function setSlip() { var S = D.settings; S.slipW = num($('sl_w').value) || 102; S.slipH = num($('sl_h').value) || 155; S.slipAW = num($('sl_aw').value) || S.slipW - 10; S.slipAH = num($('sl_ah').value) || S.slipH - 12; S.slipTop = $('sl_t').value === '' ? 0 : num($('sl_t').value); S.slip35 = true; save(); toast('Slip size saved'); }
 function setBtW(n) { D.settings.btWidth = n; save(); show(); }
 function btScan() {
   var r = JSON.parse(Android.btDevices());
