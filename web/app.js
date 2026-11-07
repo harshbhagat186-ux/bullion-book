@@ -1040,7 +1040,7 @@ V.more = function () {
   var items = [['registers', 'Bill Registers', 'Silver, Sili 999, Rupa, Gold, Kaccha with ratios'], ['stock', 'Stock & Cash', 'Stock statement, cash in/out, expenses'], ['daybook', 'Day Book', 'Everything on one day, day report'], ['parties', 'Parties', 'Customers & suppliers'], ['printer', 'Printer', 'Bill size, Bluetooth thermal printer'], ['backup', 'Backup & Excel', 'Export to Excel, backup, restore'], ['settings', 'Settings', 'Shop details, GST, units, opening stock']];
   if (window.Cloud && Cloud.enabled && Cloud.isOwner) items.push(['users', 'Staff logins', 'Who can open this shop on other phones / laptops']);
   if (window.Cloud && Cloud.enabled && Cloud.user) items.push(['__signout', 'Sign out', 'Signed in as ' + esc(Cloud.user.email)]);
-  return '<div class="card menu"><div class="list">' + items.map(function (x) { return '<div class="it" onclick="' + (x[0] === '__signout' ? 'Cloud.signOut()' : 'App.go(\'' + x[0] + '\')') + '"><div class="l"><b>' + x[1] + '</b><small>' + x[2] + '</small></div><div class="r">&#8250;</div></div>'; }).join('') + '</div></div><p class="muted c" style="font-size:12px">Bullion Book 2.7 · ' + (window.Cloud && Cloud.enabled ? 'data saved online and on this device' : 'all data stays on this phone') + '</p>';
+  return '<div class="card menu"><div class="list">' + items.map(function (x) { return '<div class="it" onclick="' + (x[0] === '__signout' ? 'Cloud.signOut()' : 'App.go(\'' + x[0] + '\')') + '"><div class="l"><b>' + x[1] + '</b><small>' + x[2] + '</small></div><div class="r">&#8250;</div></div>'; }).join('') + '</div></div><p class="muted c" style="font-size:12px">Bullion Book 2.8 · ' + (window.Cloud && Cloud.enabled ? 'data saved online and on this device' : 'all data stays on this phone') + '</p>';
 };
 V.parties = function () {
   var c = compute();
@@ -1069,7 +1069,7 @@ V.settings = function () {
   h += '<p class="muted" style="font-size:12px">Example: silver in kg with rate per 1 kg → 20.000 × 2,47,000 = 49,40,000. Gold in g with rate per 10 g → 10 g × 75,000 = 75,000.</p>';
   h += '<h3>Count in stock</h3>' + ITEM_KEYS.map(function (k) { return '<label class="chk"><input type="checkbox" id="s_st_' + k + '" ' + (S.stockItems[k] ? 'checked' : '') + '> ' + ITEMS[k].name + '</label>'; }).join('') + '</div>';
   h += '<div class="card"><h2>Bill numbers</h2><div class="row">' + inp('s_sp', 'Sale prefix', S.sellPrefix) + inp('s_bp', 'Purchase prefix', S.buyPrefix) + '</div><p class="muted" style="font-size:12px">Bill numbers start again from 1 every day.</p></div>';
-  h += '<div class="card"><h2>Opening stock &amp; cash</h2><div class="row">' + inp('o_sili', 'Sili 999 (' + unitOf('silver') + ')', O.sili, 'n') + inp('o_silver', 'Silver (' + unitOf('silver') + ')', O.silver, 'n') + '</div><div class="row">' + inp('o_rupa', 'Rupa weight', O.rupa, 'n') + inp('o_rupaFine', 'Rupa fine', O.rupaFine, 'n') + '</div><div class="row">' + inp('o_gold', 'Gold (' + unitOf('gold') + ')', O.gold, 'n') + inp('o_coin', 'Gold Coin / Gini (' + unitOf('gold') + ')', O.coin, 'n') + '</div><div class="row">' + inp('o_kaccha', 'Kaccha weight', O.kaccha, 'n') + inp('o_kacchaFine', 'Kaccha fine', O.kacchaFine, 'n') + '</div><div class="row">' + inp('o_cash', 'Cash in hand (₹)', O.cash, 'n') + '<span></span>' + '</div><p class="muted" style="font-size:12px">For old party balances use Baki/Jama → + Entry.</p></div>';
+  h += '<div class="card"><h2>Opening stock &amp; cash</h2><div class="row">' + inp('o_sili', 'Sili 999 (' + unitOf('silver') + ')', O.sili, 'n') + inp('o_silver', 'Silver (' + unitOf('silver') + ')', O.silver, 'n') + '</div><div class="row">' + inp('o_rupa', 'Rupa weight', O.rupa, 'n') + inp('o_rupaFine', 'Rupa fine', O.rupaFine, 'n') + '</div><div class="row">' + inp('o_gold', 'Gold (' + unitOf('gold') + ')', O.gold, 'n') + inp('o_coin', 'Gold Coin / Gini (' + unitOf('gold') + ')', O.coin, 'n') + '</div><div class="row">' + inp('o_kaccha', 'Kaccha weight', O.kaccha, 'n') + inp('o_kacchaFine', 'Kaccha fine', O.kacchaFine, 'n') + '</div><div class="row">' + inp('o_cash', 'Cash in hand (₹)', O.cash, 'n') + '<span></span>' + '</div><div class="btns"><button class="btn" style="background:#b3261e;color:#fff" onclick="App.resetOpening()">Reset opening stock to 0</button></div><p class="muted" style="font-size:12px">For old party balances use Baki/Jama → + Entry.</p></div>';
   h += '<div class="btns"><button class="btn gold" onclick="App.saveSettings()">Save settings</button></div>';
   return h;
 };
@@ -1082,6 +1082,13 @@ function saveSettings() {
   S.sellPrefix = $('s_sp').value; S.buyPrefix = $('s_bp').value; 
   ['sili', 'silver', 'rupa', 'rupaFine', 'gold', 'kaccha', 'kacchaFine', 'coin', 'cash'].forEach(function (k) { O[k] = num($('o_' + k).value); });
   save(); toast('Settings saved'); back();
+}
+
+function resetOpening() {
+  if (!confirm('Reset ALL opening stock and cash to 0?\n\nStock and cash on Home will then show only what was entered in the app (bills, stock in/out, Baki/Jama). Bills and entries are not deleted.')) return;
+  var O = D.opening;
+  ['sili', 'silver', 'rupa', 'rupaFine', 'gold', 'kaccha', 'kacchaFine', 'coin', 'cash'].forEach(function (k) { O[k] = 0; var e = $('o_' + k); if (e) e.value = 0; });
+  save(); toast('Opening stock reset to 0');
 }
 
 /* ----- Printer ----- */
@@ -1223,7 +1230,7 @@ window.App = {
   setSD: function (o) { for (var k in o) sdState[k] = o[k]; if (o.range === 'custom' && !sdState.from) { sdState.from = today().slice(0, 8) + '01'; sdState.to = today(); } show(); },
   sdType: function (t) { sdType = t; show(); }, sdCalc: sdCalc, sdAdd: sdAdd, sdTick: sdTick, sdDel: sdDel,
   setDB: function (v) { dbState.date = (v && v <= today()) ? v : today(); show(); }, printDay: printDay, waDay: waDay,
-  saveSettings: saveSettings, setPaper: setPaper, setSlip: setSlip, setBtW: setBtW, btScan: btScan, btPick: btPick, btTest: btTest,
+  saveSettings: saveSettings, resetOpening: resetOpening, setPaper: setPaper, setSlip: setSlip, setBtW: setBtW, btScan: btScan, btPick: btPick, btTest: btTest,
   addUser: function () { var e = $('u_e').value, p = $('u_p').value; toast('Adding…'); Cloud.addUser(e, p, function (err) { if (err) toast(err); else { toast('Login added: ' + e); show(); } }); },
   removeUser: function (e) { if (!confirm('Remove ' + e + '? They will not be able to open the shop any more.')) return; Cloud.removeUser(e, function (err) { toast(err || 'Removed'); show(); }); },
   resetUser: function (e) { Cloud.resetPassword(e, function (err) { toast(err || 'Password reset email sent to ' + e); }); },
