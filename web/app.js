@@ -218,12 +218,14 @@ function compute(upto) {
   ALL_KEYS.forEach(function (k) {
     st[k] = { open: num(D.opening[k]), openFine: ITEMS[k].touch ? num(D.opening[k + 'Fine']) : num(D.opening[k]), buy: 0, sell: 0, buyFine: 0, sellFine: 0, adjIn: 0, adjOut: 0, adjInFine: 0, adjOutFine: 0 };
   });
-  var pb = {};
+  var pb = {}, from = D.opening.from || '';
   function P(id) { return pb[id] || (pb[id] = { cash: 0, silver: 0, gold: 0 }); }
-  function money2(mode, dir, amt) { cash[dir] += amt; }
+  function money2(mode, dir, amt) { if (!old) cash[dir] += amt; }
+  var old = false;
   D.bills.forEach(function (b) {
     if (upto && b.date > upto) return;
-    b.lines.forEach(function (l) {
+    old = !!from && b.date < from;
+    if (!old) b.lines.forEach(function (l) {
       var s = st[l.item];
       if (lineDir(b, l) === 'buy') { s.buy += l.weight; s.buyFine += l.fine; } else { s.sell += l.weight; s.sellFine += l.fine; }
     });
@@ -232,6 +234,7 @@ function compute(upto) {
   });
   D.entries.forEach(function (e) {
     if (upto && e.date > upto) return;
+    old = !!from && e.date < from;
     var acct = acctOfItem(e.item), q = num(e.qty);
     switch (e.kind) {
       case 'baki': P(e.partyId)[acct] += q; break;
@@ -242,7 +245,7 @@ function compute(upto) {
     if (e.kind === 'recv' || e.kind === 'pay' || e.kind === 'cashin' || e.kind === 'cashout' || e.kind === 'stockin' || e.kind === 'stockout') {
       var dirIn = e.kind === 'recv' || e.kind === 'cashin' || e.kind === 'stockin';
       if (e.item === 'cash') money2(e.mode, dirIn ? 'in' : 'out', q);
-      else {
+      else if (!old) {
         var s = st[e.item];
         if (dirIn) { s.adjIn += num(e.weight); s.adjInFine += q; } else { s.adjOut += num(e.weight); s.adjOutFine += q; }
       }
@@ -1046,7 +1049,7 @@ V.more = function () {
   var items = [['registers', 'Bill Registers', 'Silver, Sili 999, Rupa, Gold, Kaccha with ratios'], ['stock', 'Stock & Cash', 'Stock statement, cash in/out, expenses'], ['daybook', 'Day Book', 'Everything on one day, day report'], ['parties', 'Parties', 'Customers & suppliers'], ['printer', 'Printer', 'Bill size, Bluetooth thermal printer'], ['backup', 'Backup & Excel', 'Export to Excel, backup, restore'], ['settings', 'Settings', 'Shop details, GST, units, opening stock']];
   if (window.Cloud && Cloud.enabled && Cloud.isOwner) items.push(['users', 'Staff logins', 'Who can open this shop on other phones / laptops']);
   if (window.Cloud && Cloud.enabled && Cloud.user) items.push(['__signout', 'Sign out', 'Signed in as ' + esc(Cloud.user.email)]);
-  return '<div class="card menu"><div class="list">' + items.map(function (x) { return '<div class="it" onclick="' + (x[0] === '__signout' ? 'Cloud.signOut()' : 'App.go(\'' + x[0] + '\')') + '"><div class="l"><b>' + x[1] + '</b><small>' + x[2] + '</small></div><div class="r">&#8250;</div></div>'; }).join('') + '</div></div><p class="muted c" style="font-size:12px">Bullion Book 2.9 · ' + (window.Cloud && Cloud.enabled ? 'data saved online and on this device' : 'all data stays on this phone') + '</p>';
+  return '<div class="card menu"><div class="list">' + items.map(function (x) { return '<div class="it" onclick="' + (x[0] === '__signout' ? 'Cloud.signOut()' : 'App.go(\'' + x[0] + '\')') + '"><div class="l"><b>' + x[1] + '</b><small>' + x[2] + '</small></div><div class="r">&#8250;</div></div>'; }).join('') + '</div></div><p class="muted c" style="font-size:12px">Bullion Book 3.0 · ' + (window.Cloud && Cloud.enabled ? 'data saved online and on this device' : 'all data stays on this phone') + '</p>';
 };
 V.parties = function () {
   var c = compute();
@@ -1075,7 +1078,7 @@ V.settings = function () {
   h += '<p class="muted" style="font-size:12px">Example: silver in kg with rate per 1 kg → 20.000 × 2,47,000 = 49,40,000. Gold in g with rate per 10 g → 10 g × 75,000 = 75,000.</p>';
   h += '<h3>Count in stock</h3>' + ITEM_KEYS.map(function (k) { return '<label class="chk"><input type="checkbox" id="s_st_' + k + '" ' + (S.stockItems[k] ? 'checked' : '') + '> ' + ITEMS[k].name + '</label>'; }).join('') + '</div>';
   h += '<div class="card"><h2>Bill numbers</h2><div class="row">' + inp('s_sp', 'Sale prefix', S.sellPrefix) + inp('s_bp', 'Purchase prefix', S.buyPrefix) + '</div><p class="muted" style="font-size:12px">Bill numbers start again from 1 every day.</p></div>';
-  h += '<div class="card"><h2>Opening stock &amp; cash</h2><div class="row">' + inp('o_sili', 'Sili 999 (' + unitOf('silver') + ')', O.sili, 'n') + inp('o_silver', 'Silver (' + unitOf('silver') + ')', O.silver, 'n') + '</div><div class="row">' + inp('o_rupa', 'Rupa weight', O.rupa, 'n') + inp('o_rupaFine', 'Rupa fine', O.rupaFine, 'n') + '</div><div class="row">' + inp('o_gold', 'Gold (' + unitOf('gold') + ')', O.gold, 'n') + inp('o_coin', 'Gold Coin / Gini (' + unitOf('gold') + ')', O.coin, 'n') + '</div><div class="row">' + inp('o_kaccha', 'Kaccha weight', O.kaccha, 'n') + inp('o_kacchaFine', 'Kaccha fine', O.kacchaFine, 'n') + '</div><div class="row">' + inp('o_cash', 'Cash in hand (₹)', O.cash, 'n') + '<span></span>' + '</div><div class="btns"><button class="btn" style="background:#b3261e;color:#fff" onclick="App.resetOpening()">Reset opening stock to 0</button></div><p class="muted" style="font-size:12px">For old party balances use Baki/Jama → + Entry.</p></div>';
+  h += '<div class="card"><h2>Opening stock &amp; cash</h2><label class="f"><span>Opening stock is as on date <small>(stock &amp; cash count only entries from this date)</small></span><input id="o_from" type="date" value="' + esc(O.from || '') + '"></label><div class="row">' + inp('o_sili', 'Sili 999 (' + unitOf('silver') + ')', O.sili, 'n') + inp('o_silver', 'Silver (' + unitOf('silver') + ')', O.silver, 'n') + '</div><div class="row">' + inp('o_rupa', 'Rupa weight', O.rupa, 'n') + inp('o_rupaFine', 'Rupa fine', O.rupaFine, 'n') + '</div><div class="row">' + inp('o_gold', 'Gold (' + unitOf('gold') + ')', O.gold, 'n') + inp('o_coin', 'Gold Coin / Gini (' + unitOf('gold') + ')', O.coin, 'n') + '</div><div class="row">' + inp('o_kaccha', 'Kaccha weight', O.kaccha, 'n') + inp('o_kacchaFine', 'Kaccha fine', O.kacchaFine, 'n') + '</div><div class="row">' + inp('o_cash', 'Cash in hand (₹)', O.cash, 'n') + '<span></span>' + '</div><div class="btns"><button class="btn" style="background:#b3261e;color:#fff" onclick="App.resetOpening()">Reset: start fresh from today</button></div><p class="muted" style="font-size:12px">For old party balances use Baki/Jama → + Entry.</p></div>';
   h += '<div class="btns"><button class="btn gold" onclick="App.saveSettings()">Save settings</button></div>';
   return h;
 };
@@ -1087,14 +1090,16 @@ function saveSettings() {
   ITEM_KEYS.forEach(function (k) { S.stockItems[k] = $('s_st_' + k).checked; });
   S.sellPrefix = $('s_sp').value; S.buyPrefix = $('s_bp').value; 
   ['sili', 'silver', 'rupa', 'rupaFine', 'gold', 'kaccha', 'kacchaFine', 'coin', 'cash'].forEach(function (k) { O[k] = num($('o_' + k).value); });
+  O.from = $('o_from').value || '';
   save(); toast('Settings saved'); back();
 }
 
 function resetOpening() {
-  if (!confirm('Reset ALL opening stock and cash to 0?\n\nStock and cash on Home will then show only what was entered in the app (bills, stock in/out, Baki/Jama). Bills and entries are not deleted.')) return;
+  if (!confirm('Start fresh from today?\n\nOpening stock and cash become 0 (type today\'s real opening after this, then Save settings). Stock and cash will count only entries from today. Old bills are kept for history and party Baki/Jama stays as it is.')) return;
   var O = D.opening;
   ['sili', 'silver', 'rupa', 'rupaFine', 'gold', 'kaccha', 'kacchaFine', 'coin', 'cash'].forEach(function (k) { O[k] = 0; var e = $('o_' + k); if (e) e.value = 0; });
-  save(); toast('Opening stock reset to 0');
+  O.from = today(); if ($('o_from')) $('o_from').value = O.from;
+  save(); toast('Fresh start from today');
 }
 
 /* ----- Printer ----- */
