@@ -578,14 +578,14 @@ function billHtml(b, paper) {
     'th,td{padding:' + (thermal ? '2px 1px' : '5px 6px') + ';vertical-align:top}' +
     (thermal ? 'th{border-bottom:1px dashed #000;text-align:left}.hr{border-top:1px dashed #000;margin:4px 0}' : 'th,td.b{border:1px solid #555}th{background:#f1e7cf;text-align:left}.hr{border-top:1px solid #000;margin:8px 0}.box{border:1px solid #555;padding:8px}') +
     (slip ? 'th,td{padding:3px 2px}.hr{margin:6px 0}' : '') +
-    '.tot td{font-weight:bold}.big{font-size:' + (slip ? '1.2em' : thermal ? '13px' : '16px') + ';font-weight:bold}.muted{color:#444}.ttl{font-weight:bold;letter-spacing:1px}';
+    '.it th+th,.it td+td{border-left:1px solid #000}.it th,.it td{padding-left:4px;padding-right:4px}.tot td{font-weight:bold}.big{font-size:' + (slip ? '1.2em' : thermal ? '13px' : '16px') + ';font-weight:bold}.muted{color:#444}.ttl{font-weight:bold;letter-spacing:1px}';
   var h = '<!doctype html><html><head><meta charset="utf-8"><style>' + css + '</style></head><body>' + (slip ? '<div class="wrap">' : '');
   h += '<div class="c"><h1>' + esc(S.shopName) + '</h1>' + (S.tagline ? '<div>' + esc(S.tagline) + '</div>' : '') + (S.address ? '<div>' + esc(S.address).replace(/\n/g, '<br>') + '</div>' : '') + (S.phone ? '<div>Ph: ' + esc(S.phone) + '</div>' : '') + '</div>';
   h += '<div class="hr"></div><div class="c ttl">' + title + '</div>';
   if (thermal) {
     h += '<table><tr><td>No: <b>' + esc(b.no) + '</b></td><td class="r">' + fd(b.date) + ' ' + esc(b.time) + '</td></tr></table>';
     h += '<div>' + (b.type === 'sell' ? 'To' : 'From') + ': <b>' + esc(b.partyName || 'Cash') + '</b>' + (party.phone ? ' (' + esc(party.phone) + ')' : '') + '</div><div class="hr"></div>';
-    h += '<table><tr><th>Item</th><th class="r">Wt</th><th class="r">Rate</th><th class="r">Amt</th></tr>';
+    h += '<table class="it"><tr><th>Item</th><th class="r">Wt</th><th class="r">Rate</th><th class="r">Amt</th></tr>';
     b.lines.forEach(function (l) {
       var it = ITEMS[l.item];
       h += '<tr><td>' + lineName(b, l) + (lineNote(l, b) ? '<br><span class="muted">' + lineNote(l, b) + '</span>' : '') + (it.touch || l.touch < 100 ? '<br><span class="muted">T ' + l.touch + '% F ' + w(l.fine) + '</span>' : '') + '</td><td class="r">' + w(l.weight) + '<br><span class="muted">' + unitOf(it.metal) + '</span></td><td class="r">' + inr(l.rate) + '</td><td class="r">' + inr(l.amount) + '</td></tr>';
@@ -1059,7 +1059,7 @@ V.more = function () {
   var items = [['registers', 'Bill Registers', 'Silver, Sili 999, Rupa, Gold, Kaccha with ratios'], ['stock', 'Stock & Cash', 'Stock statement, cash in/out, expenses'], ['daybook', 'Day Book', 'Everything on one day, day report'], ['parties', 'Parties', 'Customers & suppliers'], ['printer', 'Printer', 'Bill size, Bluetooth thermal printer'], ['backup', 'Backup & Excel', 'Export to Excel, backup, restore'], ['settings', 'Settings', 'Shop details, GST, units, opening stock']];
   if (window.Cloud && Cloud.enabled && Cloud.isOwner) items.push(['users', 'Staff logins', 'Who can open this shop on other phones / laptops']);
   if (window.Cloud && Cloud.enabled && Cloud.user) items.push(['__signout', 'Sign out', 'Signed in as ' + esc(Cloud.user.email)]);
-  return '<div class="card menu"><div class="list">' + items.map(function (x) { return '<div class="it" onclick="' + (x[0] === '__signout' ? 'Cloud.signOut()' : 'App.go(\'' + x[0] + '\')') + '"><div class="l"><b>' + x[1] + '</b><small>' + x[2] + '</small></div><div class="r">&#8250;</div></div>'; }).join('') + '</div></div><p class="muted c" style="font-size:12px">Bullion Book 3.5 · ' + (window.Cloud && Cloud.enabled ? 'data saved online and on this device' : 'all data stays on this phone') + '</p>';
+  return '<div class="card menu"><div class="list">' + items.map(function (x) { return '<div class="it" onclick="' + (x[0] === '__signout' ? 'Cloud.signOut()' : 'App.go(\'' + x[0] + '\')') + '"><div class="l"><b>' + x[1] + '</b><small>' + x[2] + '</small></div><div class="r">&#8250;</div></div>'; }).join('') + '</div></div><p class="muted c" style="font-size:12px">Bullion Book 3.6 · ' + (window.Cloud && Cloud.enabled ? 'data saved online and on this device' : 'all data stays on this phone') + '</p>';
 };
 V.parties = function () {
   var c = compute();
