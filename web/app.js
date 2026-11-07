@@ -213,12 +213,14 @@ function billCalc(b) {
 function inRange(d, from, to) { return (!from || d >= from) && (!to || d <= to); }
 
 /* Full position: stock, cash, party balances. Positive party balance = Baki (party owes shop). */
-function compute(upto) {
-  var st = {}, cash = { open: num(D.opening.cash), in: 0, out: 0 }, bank = { open: num(D.opening.bank), in: 0, out: 0 };
+function compute(upto, day) {
+  var O = day ? {} : D.opening;
+  var st = {}, cash = { open: num(O.cash), in: 0, out: 0 }, bank = { open: num(O.bank), in: 0, out: 0 };
   ALL_KEYS.forEach(function (k) {
-    st[k] = { open: num(D.opening[k]), openFine: ITEMS[k].touch ? num(D.opening[k + 'Fine']) : num(D.opening[k]), buy: 0, sell: 0, buyFine: 0, sellFine: 0, adjIn: 0, adjOut: 0, adjInFine: 0, adjOutFine: 0 };
+    st[k] = { open: num(O[k]), openFine: ITEMS[k].touch ? num(O[k + 'Fine']) : num(O[k]), buy: 0, sell: 0, buyFine: 0, sellFine: 0, adjIn: 0, adjOut: 0, adjInFine: 0, adjOutFine: 0 };
   });
-  var pb = {}, from = D.opening.from || '';
+  var pb = {}, from = day || '';
+  if (day) upto = day;
   function P(id) { return pb[id] || (pb[id] = { cash: 0, silver: 0, gold: 0 }); }
   function money2(mode, dir, amt) { if (!old) cash[dir] += amt; }
   var old = false;
@@ -230,13 +232,13 @@ function compute(upto) {
       if (lineDir(b, l) === 'buy') { s.buy += l.weight; s.buyFine += l.fine; } else { s.sell += l.weight; s.sellFine += l.fine; }
     });
     if (b.type === 'sell') money2(b.mode, 'in', b.paid); else money2(b.mode, 'out', b.paid);
-    if (b.partyId && !b.rtgs) { P(b.partyId).cash += (b.type === 'sell' ? 1 : -1) * (b.total - b.paid); var bm = billMetal(b); P(b.partyId).silver += bm.silver; P(b.partyId).gold += bm.gold; }
+    if (b.partyId && !b.rtgs && !old) { P(b.partyId).cash += (b.type === 'sell' ? 1 : -1) * (b.total - b.paid); var bm = billMetal(b); P(b.partyId).silver += bm.silver; P(b.partyId).gold += bm.gold; }
   });
   D.entries.forEach(function (e) {
     if (upto && e.date > upto) return;
     old = !!from && e.date < from;
     var acct = acctOfItem(e.item), q = num(e.qty);
-    switch (e.kind) {
+    if (!old) switch (e.kind) {
       case 'baki': P(e.partyId)[acct] += q; break;
       case 'jama': P(e.partyId)[acct] -= q; break;
       case 'recv': P(e.partyId)[acct] -= q; break;
@@ -316,12 +318,12 @@ function topAction(label, fn) {
 var V = {};
 
 V.home = function () {
-  var c = compute(), t = today();
+  var t = today(), c = compute(null, t), full = compute();
   var todays = D.bills.filter(function (b) { return b.date === t; });
   var sold = 0, bought = 0;
   todays.forEach(function (b) { if (b.type === 'sell') sold += b.total; else bought += b.total; });
   var baki = { cash: 0, silver: 0, gold: 0 }, jama = { cash: 0, silver: 0, gold: 0 };
-  Object.keys(c.party).forEach(function (id) { ACCTS.forEach(function (a) { var v = c.party[id][a]; if (v > 0.0005) baki[a] += v; else if (v < -0.0005) jama[a] -= v; }); });
+  Object.keys(full.party).forEach(function (id) { ACCTS.forEach(function (a) { var v = full.party[id][a]; if (v > 0.0005) baki[a] += v; else if (v < -0.0005) jama[a] -= v; }); });
   function metalLine(o) { var p = []; if (o.silver > 0.0005) p.push('Silver ' + w(o.silver, 'silver')); if (o.gold > 0.0005) p.push('Gold ' + w(o.gold, 'gold')); return p.join(' · '); }
   var h = '<div class="big4">';
   h += '<button class="sellb" onclick="App.newBill(\'sell\')"><span>&#8593;</span>Sell</button>';
@@ -330,20 +332,20 @@ V.home = function () {
   h += '<button onclick="App.go(\'entry\',{kind:\'pay\'})"><span>&#8599;</span>Given</button>';
   h += '</div>';
   h += '<div class="grid" style="margin-bottom:12px">';
-  h += tile('Cash in hand', money(c.cash.close), '');
-  h += tile('Silver stock', w(c.metal.silver, 'silver'), '', 'silver');
-  h += tile('Gold stock', w(c.metal.gold, 'gold'), '', 'gold');
+  h += tile('Cash today', money(c.cash.close), 'In ' + money(c.cash.in) + ' · Out ' + money(c.cash.out));
+  h += tile('Silver today', w(c.metal.silver, 'silver'), 'net in/out', 'silver');
+  h += tile('Gold today', w(c.metal.gold, 'gold'), 'net in/out', 'gold');
   h += tile('Today', 'Sold ' + money(sold), 'Bought ' + money(bought));
   h += '<div class="tile click" onclick="App.nav(\'baki\')"><div class="k baki">To receive (Baki)</div><div class="v baki">' + money(baki.cash) + '</div><div class="s">' + metalLine(baki) + '</div></div>';
   h += '<div class="tile click" onclick="App.setBJ({tab:\'jama\'});App.nav(\'baki\')"><div class="k jama">To pay (Jama)</div><div class="v jama">' + money(jama.cash) + '</div><div class="s">' + metalLine(jama) + '</div></div>';
   h += '</div>';
   h += '<div class="btns" style="margin-bottom:12px"><button class="btn gold" style="flex:1" onclick="App.setDB(\'\');App.go(\'daybook\')">Today\'s hisab</button><button class="btn" onclick="App.setDB(\'\');App.waDay()">WhatsApp</button></div>';
-  h += '<div class="card"><h2>Stock by item</h2><div class="tw"><table class="t"><thead><tr><th>Item</th><th class="n">Closing</th><th class="n">Fine</th><th class="n">Buy ratio</th><th class="n">Sell ratio</th></tr></thead><tbody>';
+  h += '<div class="card"><h2>Today by item <small class="muted" style="font-weight:400">(starts at 0 every day · full stock: More → Stock)</small></h2><div class="tw"><table class="t"><thead><tr><th>Item</th><th class="n">Closing</th><th class="n">Fine</th><th class="n">Buy ratio</th><th class="n">Sell ratio</th></tr></thead><tbody>';
   shownKeys().forEach(function (k) {
-    var it = ITEMS[k], s = c.stock[k], rb = ratioOf(registerRows(k, 'buy'), k), rs = ratioOf(registerRows(k, 'sell'), k);
+    var it = ITEMS[k], s = c.stock[k], rb = ratioOf(registerRows(k, 'buy', t, t), k), rs = ratioOf(registerRows(k, 'sell', t, t), k);
     h += '<tr class="click" onclick="App.go(\'registers\',\'' + k + '\')"><td>' + it.name + '</td><td class="n">' + w(s.close, it.metal) + '</td><td class="n">' + (it.touch ? w(s.closeFine) : '') + '</td><td class="n">' + (rb.avg ? inr(rb.avg) : '-') + '</td><td class="n">' + (rs.avg ? inr(rs.avg) : '-') + '</td></tr>';
   });
-  h += '<tr class="click" onclick="App.go(\'stock\')"><td><b>Cash in hand</b></td><td class="n"><b>' + money(c.cash.close) + '</b></td><td></td><td class="n" colspan="2"><small class="muted">In ' + money(c.cash.in) + ' · Out ' + money(c.cash.out) + '</small></td></tr>';
+  h += '<tr class="click" onclick="App.go(\'stock\')"><td><b>Cash today</b></td><td class="n"><b>' + money(c.cash.close) + '</b></td><td></td><td class="n" colspan="2"><small class="muted">In ' + money(c.cash.in) + ' · Out ' + money(c.cash.out) + '</small></td></tr>';
   h += '</tbody></table></div></div>';
   h += '<div class="card"><h2>Today\'s bills</h2>' + billList(todays.slice().sort(byNewest)) + '<p class="muted" style="font-size:12px;margin:8px 0 0">Old days: More → Day Book</p></div>';
   return h;
@@ -1049,7 +1051,7 @@ V.more = function () {
   var items = [['registers', 'Bill Registers', 'Silver, Sili 999, Rupa, Gold, Kaccha with ratios'], ['stock', 'Stock & Cash', 'Stock statement, cash in/out, expenses'], ['daybook', 'Day Book', 'Everything on one day, day report'], ['parties', 'Parties', 'Customers & suppliers'], ['printer', 'Printer', 'Bill size, Bluetooth thermal printer'], ['backup', 'Backup & Excel', 'Export to Excel, backup, restore'], ['settings', 'Settings', 'Shop details, GST, units, opening stock']];
   if (window.Cloud && Cloud.enabled && Cloud.isOwner) items.push(['users', 'Staff logins', 'Who can open this shop on other phones / laptops']);
   if (window.Cloud && Cloud.enabled && Cloud.user) items.push(['__signout', 'Sign out', 'Signed in as ' + esc(Cloud.user.email)]);
-  return '<div class="card menu"><div class="list">' + items.map(function (x) { return '<div class="it" onclick="' + (x[0] === '__signout' ? 'Cloud.signOut()' : 'App.go(\'' + x[0] + '\')') + '"><div class="l"><b>' + x[1] + '</b><small>' + x[2] + '</small></div><div class="r">&#8250;</div></div>'; }).join('') + '</div></div><p class="muted c" style="font-size:12px">Bullion Book 3.0 · ' + (window.Cloud && Cloud.enabled ? 'data saved online and on this device' : 'all data stays on this phone') + '</p>';
+  return '<div class="card menu"><div class="list">' + items.map(function (x) { return '<div class="it" onclick="' + (x[0] === '__signout' ? 'Cloud.signOut()' : 'App.go(\'' + x[0] + '\')') + '"><div class="l"><b>' + x[1] + '</b><small>' + x[2] + '</small></div><div class="r">&#8250;</div></div>'; }).join('') + '</div></div><p class="muted c" style="font-size:12px">Bullion Book 3.1 · ' + (window.Cloud && Cloud.enabled ? 'data saved online and on this device' : 'all data stays on this phone') + '</p>';
 };
 V.parties = function () {
   var c = compute();
@@ -1078,7 +1080,7 @@ V.settings = function () {
   h += '<p class="muted" style="font-size:12px">Example: silver in kg with rate per 1 kg → 20.000 × 2,47,000 = 49,40,000. Gold in g with rate per 10 g → 10 g × 75,000 = 75,000.</p>';
   h += '<h3>Count in stock</h3>' + ITEM_KEYS.map(function (k) { return '<label class="chk"><input type="checkbox" id="s_st_' + k + '" ' + (S.stockItems[k] ? 'checked' : '') + '> ' + ITEMS[k].name + '</label>'; }).join('') + '</div>';
   h += '<div class="card"><h2>Bill numbers</h2><div class="row">' + inp('s_sp', 'Sale prefix', S.sellPrefix) + inp('s_bp', 'Purchase prefix', S.buyPrefix) + '</div><p class="muted" style="font-size:12px">Bill numbers start again from 1 every day.</p></div>';
-  h += '<div class="card"><h2>Opening stock &amp; cash</h2><label class="f"><span>Opening stock is as on date <small>(stock &amp; cash count only entries from this date)</small></span><input id="o_from" type="date" value="' + esc(O.from || '') + '"></label><div class="row">' + inp('o_sili', 'Sili 999 (' + unitOf('silver') + ')', O.sili, 'n') + inp('o_silver', 'Silver (' + unitOf('silver') + ')', O.silver, 'n') + '</div><div class="row">' + inp('o_rupa', 'Rupa weight', O.rupa, 'n') + inp('o_rupaFine', 'Rupa fine', O.rupaFine, 'n') + '</div><div class="row">' + inp('o_gold', 'Gold (' + unitOf('gold') + ')', O.gold, 'n') + inp('o_coin', 'Gold Coin / Gini (' + unitOf('gold') + ')', O.coin, 'n') + '</div><div class="row">' + inp('o_kaccha', 'Kaccha weight', O.kaccha, 'n') + inp('o_kacchaFine', 'Kaccha fine', O.kacchaFine, 'n') + '</div><div class="row">' + inp('o_cash', 'Cash in hand (₹)', O.cash, 'n') + '<span></span>' + '</div><div class="btns"><button class="btn" style="background:#b3261e;color:#fff" onclick="App.resetOpening()">Reset: start fresh from today</button></div><p class="muted" style="font-size:12px">For old party balances use Baki/Jama → + Entry.</p></div>';
+  h += '<div class="card"><h2>Opening stock &amp; cash</h2><div class="row">' + inp('o_sili', 'Sili 999 (' + unitOf('silver') + ')', O.sili, 'n') + inp('o_silver', 'Silver (' + unitOf('silver') + ')', O.silver, 'n') + '</div><div class="row">' + inp('o_rupa', 'Rupa weight', O.rupa, 'n') + inp('o_rupaFine', 'Rupa fine', O.rupaFine, 'n') + '</div><div class="row">' + inp('o_gold', 'Gold (' + unitOf('gold') + ')', O.gold, 'n') + inp('o_coin', 'Gold Coin / Gini (' + unitOf('gold') + ')', O.coin, 'n') + '</div><div class="row">' + inp('o_kaccha', 'Kaccha weight', O.kaccha, 'n') + inp('o_kacchaFine', 'Kaccha fine', O.kacchaFine, 'n') + '</div><div class="row">' + inp('o_cash', 'Cash in hand (₹)', O.cash, 'n') + '<span></span>' + '</div><p class="muted" style="font-size:12px">For old party balances use Baki/Jama → + Entry.</p></div>';
   h += '<div class="btns"><button class="btn gold" onclick="App.saveSettings()">Save settings</button></div>';
   return h;
 };
@@ -1090,7 +1092,7 @@ function saveSettings() {
   ITEM_KEYS.forEach(function (k) { S.stockItems[k] = $('s_st_' + k).checked; });
   S.sellPrefix = $('s_sp').value; S.buyPrefix = $('s_bp').value; 
   ['sili', 'silver', 'rupa', 'rupaFine', 'gold', 'kaccha', 'kacchaFine', 'coin', 'cash'].forEach(function (k) { O[k] = num($('o_' + k).value); });
-  O.from = $('o_from').value || '';
+  delete O.from;
   save(); toast('Settings saved'); back();
 }
 

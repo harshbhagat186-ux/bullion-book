@@ -1,5 +1,5 @@
 /* Offline cache for the app screens. Data itself is cached by Firestore. */
-var V = 'bb-v22';
+var V = 'bb-v23';
 var FILES = ['./', 'index.html', 'style.css', 'app.js', 'cloud.js', 'config.js', 'icon.png', 'manifest.json',
   'firebase-app-compat.js', 'firebase-auth-compat.js', 'firebase-firestore-compat.js', 'xlsx.full.min.js'];
 self.addEventListener('install', function (e) { e.waitUntil(caches.open(V).then(function (c) { return c.addAll(FILES); })); self.skipWaiting(); });
