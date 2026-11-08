@@ -784,6 +784,7 @@ V.party = function (pid) {
   h += '<div class="grid" style="margin-top:10px">' + ACCTS.map(function (a) { var v = L.bal[a]; return tile(acctLabel(a), '<span class="' + (v > 0.0005 ? 'baki' : v < -0.0005 ? 'jama' : '') + '">' + fmtAcct(a, Math.abs(v)) + '</span>', v > 0.0005 ? 'Baki (they owe)' : v < -0.0005 ? 'Jama (we owe)' : 'Settled', a === 'cash' ? '' : a); }).join('') + '</div></div>';
   h += '<div class="btns"><button class="btn gold" onclick="App.go(\'entry\',{kind:\'recv\',partyId:\'' + pid + '\'})">Received</button><button class="btn dark" onclick="App.go(\'entry\',{kind:\'pay\',partyId:\'' + pid + '\'})">Paid / Given</button></div>';
   h += '<div class="btns"><button class="btn" onclick="App.go(\'entry\',{kind:\'baki\',partyId:\'' + pid + '\'})">+ Baki</button><button class="btn" onclick="App.go(\'entry\',{kind:\'jama\',partyId:\'' + pid + '\'})">+ Jama</button><button class="btn" onclick="App.newBillFor(\'' + pid + '\')">+ Bill</button></div>';
+  if (Math.abs(L.bal.silver) > 0.0005 || Math.abs(L.bal.gold) > 0.0005) h += '<div class="btns"><button class="btn gold" onclick="App.rateFix(\'' + pid + '\')">Rate fix (Bhav kata)</button></div>';
   h += '<div class="btns" style="margin-bottom:12px"><button class="btn" onclick="App.printLedger(\'' + pid + '\')">Print statement</button><button class="btn" onclick="App.shareBal(\'' + pid + '\')">Share balance</button></div>';
   h += '<div class="tw"><table class="t"><thead><tr><th>Date</th><th>Details</th><th class="n">Cash</th><th class="n">Silver</th><th class="n">Gold</th></tr></thead><tbody>';
   if (!L.rows.length) h += '<tr><td colspan="5" class="empty">No transactions</td></tr>';
@@ -794,6 +795,30 @@ V.party = function (pid) {
   h += '</tbody></table></div><p class="muted" style="font-size:12px">Red = Baki (party owes shop), green = Jama (shop owes party). Small grey figure is the running balance.</p>';
   return h;
 };
+function rateFix(pid, metal) {
+  var L = partyLedger(pid);
+  metal = metal || (Math.abs(L.bal.silver) > 0.0005 ? 'silver' : 'gold');
+  var v = L.bal[metal], u = unitOf(metal), other = metal === 'silver' ? 'gold' : 'silver';
+  openModal('<h3>Rate fix (Bhav kata)</h3>' +
+    (Math.abs(L.bal[other]) > 0.0005 ? '<div class="btns"><button class="btn' + (metal === 'silver' ? ' gold' : '') + '" onclick="App.rateFix(\'' + pid + '\',\'silver\')">Silver</button><button class="btn' + (metal === 'gold' ? ' gold' : '') + '" onclick="App.rateFix(\'' + pid + '\',\'gold\')">Gold</button></div>' : '') +
+    '<p class="muted">' + acctLabel(metal) + ' now: <b class="' + (v > 0 ? 'baki' : 'jama') + '">' + (v > 0 ? 'Baki ' : 'Jama ') + w(Math.abs(v), metal) + '</b></p>' +
+    '<label class="f"><span>Weight to fix (' + u + ')</span><input id="rf_q" type="number" step="any" inputmode="decimal" value="' + r3(Math.abs(v)) + '" oninput="App.rfCalc(\'' + metal + '\')"></label>' +
+    '<label class="f"><span>Rate (' + rateLbl(metal) + ')</span><input id="rf_r" type="number" step="any" inputmode="decimal" oninput="App.rfCalc(\'' + metal + '\')"></label>' +
+    '<label class="f"><span>Date</span><input id="rf_d" type="date" value="' + today() + '"></label>' +
+    '<div class="sum"><span>Amount</span><b id="rf_a">₹0</b></div>' +
+    '<div class="btns"><button class="btn gold" onclick="App.saveRateFix(\'' + pid + '\',\'' + metal + '\')">Save</button><button class="btn" onclick="App.closeModal()">Cancel</button></div>');
+}
+function rfCalc(metal) { var a = num($('rf_q').value) * num($('rf_r').value) / ratePer(metal); $('rf_a').textContent = money(a); }
+function saveRateFix(pid, metal) {
+  var p = partyById(pid), L = partyLedger(pid), q = r3(num($('rf_q').value)), rate = num($('rf_r').value), d = $('rf_d').value || today();
+  if (!(q > 0)) { toast('Enter weight'); return; }
+  if (!(rate > 0)) { toast('Enter rate'); return; }
+  var amt = Math.round(q * rate / ratePer(metal)), baki = L.bal[metal] > 0, fid = uid(), t = nowTime(), now = new Date().toISOString();
+  var note = 'Bhav kata ' + w(q, metal) + ' @ ' + inr(rate);
+  D.entries.push({ id: uid(), fixId: fid, kind: baki ? 'jama' : 'baki', date: d, time: t, item: metal, weight: q, touch: 100, qty: q, note: note, mode: '', partyId: pid, partyName: p.name, createdAt: now });
+  D.entries.push({ id: uid(), fixId: fid, kind: baki ? 'baki' : 'jama', date: d, time: t, item: 'cash', qty: amt, note: note, mode: 'cash', partyId: pid, partyName: p.name, createdAt: now });
+  save(); closeModal(); toast('Rate fixed: ' + money(amt)); show();
+}
 function newBillFor(pid) { var p = partyById(pid); newBillState(); F.partyName = p.name; F.phone = p.phone; go('newbill'); }
 function editParty(pid) {
   var p = partyById(pid);
@@ -911,7 +936,7 @@ function saveEntry() {
 }
 function delEntry() {
   if (!confirm('Delete this entry?')) return;
-  var id = E.id; D.entries = D.entries.filter(function (x) { return x.id !== id; }); save(); E = null; toast('Deleted'); back();
+  var id = E.id, fx = (D.entries.filter(function (x) { return x.id === id; })[0] || {}).fixId; D.entries = D.entries.filter(function (x) { return x.id !== id && !(fx && x.fixId === fx); }); save(); E = null; toast('Deleted'); back();
 }
 
 /* ----- Stock (mirrors Stock sheet) ----- */
@@ -1059,7 +1084,7 @@ V.more = function () {
   var items = [['registers', 'Bill Registers', 'Silver, Sili 999, Rupa, Gold, Kaccha with ratios'], ['stock', 'Stock & Cash', 'Stock statement, cash in/out, expenses'], ['daybook', 'Day Book', 'Everything on one day, day report'], ['parties', 'Parties', 'Customers & suppliers'], ['printer', 'Printer', 'Bill size, Bluetooth thermal printer'], ['backup', 'Backup & Excel', 'Export to Excel, backup, restore'], ['settings', 'Settings', 'Shop details, GST, units, opening stock']];
   if (window.Cloud && Cloud.enabled && Cloud.isOwner) items.push(['users', 'Staff logins', 'Who can open this shop on other phones / laptops']);
   if (window.Cloud && Cloud.enabled && Cloud.user) items.push(['__signout', 'Sign out', 'Signed in as ' + esc(Cloud.user.email)]);
-  return '<div class="card menu"><div class="list">' + items.map(function (x) { return '<div class="it" onclick="' + (x[0] === '__signout' ? 'Cloud.signOut()' : 'App.go(\'' + x[0] + '\')') + '"><div class="l"><b>' + x[1] + '</b><small>' + x[2] + '</small></div><div class="r">&#8250;</div></div>'; }).join('') + '</div></div><p class="muted c" style="font-size:12px">Bullion Book 3.7 · ' + (window.Cloud && Cloud.enabled ? 'data saved online and on this device' : 'all data stays on this phone') + '</p>';
+  return '<div class="card menu"><div class="list">' + items.map(function (x) { return '<div class="it" onclick="' + (x[0] === '__signout' ? 'Cloud.signOut()' : 'App.go(\'' + x[0] + '\')') + '"><div class="l"><b>' + x[1] + '</b><small>' + x[2] + '</small></div><div class="r">&#8250;</div></div>'; }).join('') + '</div></div><p class="muted c" style="font-size:12px">Bullion Book 3.8 · ' + (window.Cloud && Cloud.enabled ? 'data saved online and on this device' : 'all data stays on this phone') + '</p>';
 };
 V.parties = function () {
   var c = compute();
@@ -1232,6 +1257,7 @@ window.onNative = function (ev, payload) {
 window.App = {
   nav: function (r) { if (r === 'newbill') { newBillState(); } nav(r); },
   go: go, back: back, closeModal: closeModal,
+  rateFix: rateFix, rfCalc: rfCalc, saveRateFix: saveRateFix,
   newBill: function (t, item) { newBillState(); F.type = t; if (item) F.lines[0].item = item; go('newbill'); },
   newBillFor: newBillFor,
   setReg: function (o) { for (var k in o) regState[k] = o[k]; if (o.range === 'custom' && !regState.from) { regState.from = today().slice(0, 8) + '01'; regState.to = today(); } stack[stack.length - 1].a = null; show(); },
