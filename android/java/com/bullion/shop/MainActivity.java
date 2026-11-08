@@ -229,7 +229,7 @@ public class MainActivity extends Activity {
                 public void run() {
                     final WebView pw = new WebView(MainActivity.this);
                     printWeb = pw;
-                    pw.getSettings().setJavaScriptEnabled(false);
+                    pw.getSettings().setJavaScriptEnabled(true);
                     pw.setWebViewClient(new WebViewClient() {
                         @Override
                         public void onPageFinished(WebView view, String url) {
@@ -240,6 +240,14 @@ public class MainActivity extends Activity {
                                 b.setMediaSize(new PrintAttributes.MediaSize("ROLL58", "58mm roll", 2283, 11690));
                             } else if ("80".equals(paper)) {
                                 b.setMediaSize(new PrintAttributes.MediaSize("ROLL80", "80mm roll", 3150, 11690));
+                            } else if (paper != null && paper.startsWith("slip:")) {
+                                int mw = 4016, mh = 6102;
+                                try {
+                                    String[] d = paper.substring(5).split("x");
+                                    mw = (int) Math.round(Double.parseDouble(d[0]) * 1000 / 25.4);
+                                    mh = (int) Math.round(Double.parseDouble(d[1]) * 1000 / 25.4);
+                                } catch (Exception e) { }
+                                b.setMediaSize(new PrintAttributes.MediaSize("BILLSLIP", "Bill slip", mw, mh));
                             } else if ("a5".equals(paper)) {
                                 b.setMediaSize(PrintAttributes.MediaSize.ISO_A5);
                             } else {
