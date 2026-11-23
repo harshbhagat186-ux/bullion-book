@@ -304,7 +304,7 @@ function ratioOf(rows, item) {
 /* ---------- navigation ---------- */
 var stack = [];
 var cur = null;
-var TITLES = { users: 'Staff logins', sauda: 'Sauda · Silver / Gold', entry: 'Received / Given', home: 'Bullion Book', registers: 'Registers', newbill: 'New Bill', baki: 'Baki / Jama', more: 'More', bill: 'Bill', party: 'Party Ledger', stock: 'Stock', settings: 'Settings', parties: 'Parties', daybook: 'Day Book', backup: 'Backup & Excel', printer: 'Printer' };
+var TITLES = { users: 'Staff logins', sauda: 'Sauda · Silver / Gold', entry: 'Received / Given', home: 'Bullion Book', registers: 'Registers', newbill: 'New Bill', baki: 'Baki / Jama', more: 'More', bill: 'Bill', party: 'Party Ledger', stock: 'Stock', stockmatch: 'Match total stock', settings: 'Settings', parties: 'Parties', daybook: 'Day Book', backup: 'Backup & Excel', printer: 'Printer' };
 var TOP = ['home', 'registers', 'newbill', 'baki', 'more'];
 
 function nav(route, arg) { stack = [{ r: route, a: arg }]; show(); }
@@ -988,13 +988,45 @@ V.stock = function () {
     var s = T.stock[k], it = ITEMS[k];
     h += '<tr class="click" onclick="App.go(\'registers\',\'' + k + '\')"><td>' + it.name + '<br><small class="muted">' + unitOf(it.metal) + (D.settings.stockItems[k] ? '' : ' · not counted') + '</small></td><td class="n"><b>' + w(s.close) + '</b></td><td class="n">' + (it.touch ? w(s.closeFine) : '') + '</td></tr>';
   });
-  h += '</tbody></table></div></div>';
+  h += '</tbody></table></div><div class="btns" style="margin-top:10px"><button class="btn gold" style="flex:1" onclick="App.go(\'stockmatch\')">Match total stock (type real stock)</button></div></div>';
   h += '<div class="btns"><button class="btn gold" onclick="App.go(\'entry\',{kind:\'cashin\'})">Cash In</button><button class="btn dark" onclick="App.go(\'entry\',{kind:\'cashout\'})">Cash Out / Expense</button></div>';
   h += '<div class="btns"><button class="btn" onclick="App.go(\'entry\',{kind:\'stockin\'})">Stock In</button><button class="btn" onclick="App.go(\'entry\',{kind:\'stockout\'})">Stock Out</button><button class="btn" onclick="App.go(\'settings\')">Opening stock</button></div>';
   var adj = D.entries.filter(function (e) { return e.date === today() && /^(cash|stock)(in|out)$/.test(e.kind); }).sort(function (a, b) { return b.date.localeCompare(a.date); }).slice(0, 30);
   h += '<div class="card" style="margin-top:12px"><h2>Today\'s cash &amp; stock entries</h2>' + (adj.length ? '<div class="list">' + adj.map(function (e) { var a = acctOfItem(e.item); return '<div class="it click" onclick="App.go(\'entry\',{id:\'' + e.id + '\'})"><div class="l"><b>' + KIND[e.kind].short + (e.item !== 'cash' ? ' · ' + ITEMS[e.item].name : '') + '</b><small>' + fd(e.date) + (e.note ? ' · ' + esc(e.note) : '') + '</small></div><div class="r ' + (/in$/.test(e.kind) ? 'jama' : 'baki') + '">' + (e.item === 'cash' ? money(e.qty) : w(e.weight, a)) + '</div></div>'; }).join('') + '</div>' : '<div class="empty">None yet</div>') + '</div>';
   return h;
 };
+
+/* v4.2: Match total stock - type the real total, app adds Stock/Cash In/Out entries for the difference (dated today, note 'Stock match'). */
+V.stockmatch = function () {
+  var T = compute(), h = '<div class="card"><h2>Match total stock</h2><p class="muted" style="margin:0 0 10px">Type your real total stock now. Leave blank to keep as is. The app adds a Stock In / Stock Out (or Cash In / Out) entry for the difference, dated today. Bills are not changed. You can delete these entries later from today\'s entries.</p>';
+  h += '<div class="tw"><table class="t"><thead><tr><th>Item</th><th class="n">In app now</th><th class="n">Real total</th></tr></thead><tbody>';
+  shownKeys().forEach(function (k) {
+    var it = ITEMS[k], s = T.stock[k], cur = it.touch ? s.closeFine : s.close;
+    h += '<tr><td>' + it.name + '<br><small class="muted">' + unitOf(it.metal) + (it.touch ? ' · fine' : '') + '</small></td><td class="n">' + w(cur) + '</td><td class="n"><input id="sm_' + k + '" type="number" inputmode="decimal" step="0.001" style="width:120px;text-align:right" placeholder="' + w(cur) + '"></td></tr>';
+  });
+  h += '<tr><td><b>Cash</b><br><small class="muted">₹</small></td><td class="n">' + money(T.cash.close) + '</td><td class="n"><input id="sm_cash" type="number" inputmode="decimal" style="width:120px;text-align:right" placeholder="' + Math.round(T.cash.close) + '"></td></tr>';
+  h += '</tbody></table></div><div class="btns" style="margin-top:12px"><button class="btn gold" style="flex:1" onclick="App.saveStockMatch()">Save</button></div></div>';
+  return h;
+};
+function saveStockMatch() {
+  var T = compute(), d = today(), now = new Date().toISOString(), add = [];
+  shownKeys().forEach(function (k) {
+    var el = $('sm_' + k); if (!el || el.value.trim() === '') return;
+    var it = ITEMS[k], s = T.stock[k], diff = r3(num(el.value) - (it.touch ? s.closeFine : s.close));
+    if (Math.abs(diff) < 0.0005) return;
+    var q = r3(Math.abs(diff));
+    add.push({ id: uid(), kind: diff > 0 ? 'stockin' : 'stockout', date: d, item: k, weight: q, touch: 100, qty: q, note: 'Stock match', mode: '', createdAt: now });
+  });
+  var ce = $('sm_cash');
+  if (ce && ce.value.trim() !== '') {
+    var cd = Math.round((num(ce.value) - T.cash.close) * 100) / 100;
+    if (Math.abs(cd) >= 0.01) add.push({ id: uid(), kind: cd > 0 ? 'cashin' : 'cashout', date: d, item: 'cash', qty: Math.abs(cd), note: 'Stock match', mode: 'cash', createdAt: now });
+  }
+  if (!add.length) { toast('Nothing to change'); return; }
+  if (!confirm('Add ' + add.length + ' adjustment entr' + (add.length > 1 ? 'ies' : 'y') + ' so the totals match?')) return;
+  add.forEach(function (e) { D.entries.push(e); });
+  save(); toast('Stock matched'); back();
+}
 
 /* ----- Day book: each day separate, opening = previous day's closing ----- */
 var dbState = { date: today() };
@@ -1124,7 +1156,7 @@ V.more = function () {
   var items = [['registers', 'Bill Registers', 'Silver, Sili 999, Rupa, Gold, Kaccha with ratios'], ['stock', 'Stock & Cash', 'Today\'s stock statement, cash in/out, expenses'], ['daybook', 'Day Book', 'Everything on one day, day report'], ['parties', 'Parties', 'Customers & suppliers'], ['printer', 'Printer', 'Bill size, Bluetooth thermal printer'], ['backup', 'Backup & Excel', 'Export to Excel, backup, restore'], ['settings', 'Settings', 'Shop details, GST, units, opening stock']];
   if (window.Cloud && Cloud.enabled && Cloud.isOwner) items.push(['users', 'Staff logins', 'Who can open this shop on other phones / laptops']);
   if (window.Cloud && Cloud.enabled && Cloud.user) items.push(['__signout', 'Sign out', 'Signed in as ' + esc(Cloud.user.email)]);
-  return '<div class="card menu"><div class="list">' + items.map(function (x) { return '<div class="it" onclick="' + (x[0] === '__signout' ? 'Cloud.signOut()' : 'App.go(\'' + x[0] + '\')') + '"><div class="l"><b>' + x[1] + '</b><small>' + x[2] + '</small></div><div class="r">&#8250;</div></div>'; }).join('') + '</div></div><p class="muted c" style="font-size:12px">Bullion Book 4.1 · ' + (window.Cloud && Cloud.enabled ? 'data saved online and on this device' : 'all data stays on this phone') + '</p>';
+  return '<div class="card menu"><div class="list">' + items.map(function (x) { return '<div class="it" onclick="' + (x[0] === '__signout' ? 'Cloud.signOut()' : 'App.go(\'' + x[0] + '\')') + '"><div class="l"><b>' + x[1] + '</b><small>' + x[2] + '</small></div><div class="r">&#8250;</div></div>'; }).join('') + '</div></div><p class="muted c" style="font-size:12px">Bullion Book 4.2 · ' + (window.Cloud && Cloud.enabled ? 'data saved online and on this device' : 'all data stays on this phone') + '</p>';
 };
 V.parties = function () {
   var c = compute();
@@ -1317,7 +1349,7 @@ window.App = {
   eset: eset, eFine: eFine, saveEntry: saveEntry, delEntry: delEntry,
   setSD: function (o) { for (var k in o) sdState[k] = o[k]; if (o.range === 'custom' && !sdState.from) { sdState.from = today().slice(0, 8) + '01'; sdState.to = today(); } show(); },
   sdType: function (t) { sdType = t; show(); }, sdCalc: sdCalc, sdAdd: sdAdd, sdTick: sdTick, sdDel: sdDel,
-  setDB: function (v) { dbState.date = (v && v <= today()) ? v : today(); show(); }, printDay: printDay, waDay: waDay,
+  saveStockMatch: saveStockMatch, setDB: function (v) { dbState.date = (v && v <= today()) ? v : today(); show(); }, printDay: printDay, waDay: waDay,
   saveSettings: saveSettings, resetOpening: resetOpening, setPaper: setPaper, setSlip: setSlip, setBtW: setBtW, btScan: btScan, btPick: btPick, btTest: btTest,
   addUser: function () { var e = $('u_e').value, p = $('u_p').value; toast('Adding…'); Cloud.addUser(e, p, function (err) { if (err) toast(err); else { toast('Login added: ' + e); show(); } }); },
   removeUser: function (e) { if (!confirm('Remove ' + e + '? They will not be able to open the shop any more.')) return; Cloud.removeUser(e, function (err) { toast(err || 'Removed'); show(); }); },
