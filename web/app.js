@@ -164,13 +164,27 @@ function lineCalc(l) {
   return l;
 }
 function lineDir(b, l) { return l.back ? (b.type === 'buy' ? 'sell' : 'buy') : b.type; }
-function lineName(b, l) { return ITEMS[l.item].name + (l.back ? (b.type === 'buy' ? ' (given to party)' : ' (taken from party)') : ''); }
+function lineName(b, l) {
+  var d = lineDir(b, l);
+  if (l.dir && (l.ex || billMixed(b))) return ITEMS[l.item].name + (l.ex ? (d === 'sell' ? ' (given to party)' : ' (taken from party)') : (d === 'sell' ? ' (SOLD)' : ' (BOUGHT)'));
+  return ITEMS[l.item].name + (l.back ? (b.type === 'buy' ? ' (given to party)' : ' (taken from party)') : '');
+}
+/* v3.9: each line has its own Buy/Sell (l.dir). Bill type = net money direction. Old bills (no dir) work as before. */
+function billMixed(b) { var s = 0, y = 0; b.lines.forEach(function (l) { if (l.dir && !l.ex) { if (l.dir === 'sell') s = 1; else y = 1; } }); return !!(s && y); }
+function billKind(b) { return billMixed(b) ? 'Sale + Purchase' : b.type === 'sell' ? 'Sale' : 'Purchase'; }
+/* Money split of a bill into sold / bought (for Home and Day Book). */
+function billSplit(b) {
+  if (!b.lines.some(function (l) { return l.dir; })) return b.type === 'sell' ? { sold: b.total, bought: 0 } : { sold: 0, bought: b.total };
+  var o = { sold: 0, bought: 0 };
+  b.lines.forEach(function (l) { var a = Math.abs(l.amount); if (lineDir(b, l) === 'sell') o.sold += a; else o.bought += a; });
+  return o;
+}
 function lineNote(l, b) { return [lineNote0(l, b), l.mj ? 'Majuri \u20b9' + inr(l.mj) : ''].filter(Boolean).join(' · '); }
-function lineNote0(l, b) { if (b && b.rtgs) return l.rate ? '' : 'RTGS'; if (!l.back && !l.rate && l.fine) return 'No rate · Fine ' + (b && b.type === 'sell' ? 'given ' : 'received ') + w(l.fine); return l.rw ? 'Rate on ' + w(l.rw) + ' · Fine ' + (b && b.type === 'sell' ? 'given ' : 'received ') + w(lineMetalFine(l)) : ''; }
+function lineNote0(l, b) { if (b && b.rtgs) return l.rate ? '' : 'RTGS'; var gv = b && lineDir(b, l) === 'sell' ? 'given ' : 'received '; if ((!l.back || l.dir) && !l.rate && l.fine) return 'No rate · Fine ' + gv + w(l.fine); return l.rw ? 'Rate on ' + w(l.rw) + ' · Fine ' + gv + w(lineMetalFine(l)) : ''; }
 /* Metal settled as fine (no rate): unrated part of a line, or an unrated exchange line. */
 function lineMetalFine(l) {
   var it = ITEMS[l.item];
-  if (l.back) return l.rate ? 0 : l.fine;
+  if (l.back && !l.rw) return l.rate ? 0 : l.fine;
   if (!l.rate) return l.fine;                            // no rate: whole fine settled in metal
   if (!l.rw) return 0;
   var u = r3(l.weight - l.rw);
@@ -193,6 +207,13 @@ function metalHtml(b) {
   return h;
 }
 function billCalc(b) {
+  if (b.lines.some(function (l) { return l.dir; })) {
+    var net = 0;
+    b.lines.forEach(function (l) { l.dir = l.dir || lineDir(b, l); l.back = false; lineCalc(l); net += (l.dir === 'sell' ? 1 : -1) * l.amount; });
+    var first = b.lines.filter(function (l) { return !l.ex; })[0] || b.lines[0];
+    b.type = net > 0.5 ? 'sell' : net < -0.5 ? 'buy' : first.dir;
+    b.lines.forEach(function (l) { l.back = l.dir !== b.type; });
+  }
   b.lines.forEach(lineCalc);
   b.subtotal = b.lines.reduce(function (s, l) { return s + l.amount; }, 0);
   b.cgst = b.sgst = b.igst = 0;
@@ -321,7 +342,7 @@ V.home = function () {
   var t = today(), c = compute(null, t), full = compute();
   var todays = D.bills.filter(function (b) { return b.date === t; });
   var sold = 0, bought = 0;
-  todays.forEach(function (b) { if (b.type === 'sell') sold += b.total; else bought += b.total; });
+  todays.forEach(function (b) { var x = billSplit(b); sold += x.sold; bought += x.bought; });
   var baki = { cash: 0, silver: 0, gold: 0 }, jama = { cash: 0, silver: 0, gold: 0 }, tb = { cash: 0, silver: 0, gold: 0 }, tj = { cash: 0, silver: 0, gold: 0 };
   Object.keys(c.party).forEach(function (id) { ACCTS.forEach(function (a) { var v = c.party[id][a]; if (v > 0.0005) tb[a] += v; else if (v < -0.0005) tj[a] -= v; }); });
   Object.keys(full.party).forEach(function (id) { ACCTS.forEach(function (a) { var v = full.party[id][a]; if (v > 0.0005) baki[a] += v; else if (v < -0.0005) jama[a] -= v; }); });
@@ -359,7 +380,7 @@ function billList(bills) {
   if (!bills.length) return '<div class="empty">No bills yet. Tap <b>+ New Bill</b> to make one.</div>';
   return '<div class="list">' + bills.map(function (b) {
     var items = b.lines.map(function (l) { return ITEMS[l.item].short + ' ' + w(l.weight); }).join(', ');
-    return '<div class="it click" onclick="App.go(\'bill\',\'' + b.id + '\')"><div class="l"><b>' + esc(b.partyName || 'Cash') + '</b><small><span class="pill ' + b.type + '">' + (b.type === 'sell' ? 'SALE' : 'BUY') + '</span> ' + esc(b.no) + ' · ' + fd(b.date) + ' ' + esc(b.time || '') + ' · ' + esc(items) + '</small></div><div class="r"><b>' + money(b.total) + '</b>' + (Math.abs(b.due) >= 1 ? '<br><small class="' + (b.type === 'sell' ? 'baki' : 'jama') + '">due ' + money(b.due) + '</small>' : '') + '</div></div>';
+    return '<div class="it click" onclick="App.go(\'bill\',\'' + b.id + '\')"><div class="l"><b>' + esc(b.partyName || 'Cash') + '</b><small><span class="pill ' + b.type + '">' + (billMixed(b) ? 'SALE+BUY' : b.type === 'sell' ? 'SALE' : 'BUY') + '</span> ' + esc(b.no) + ' · ' + fd(b.date) + ' ' + esc(b.time || '') + ' · ' + esc(items) + '</small></div><div class="r"><b>' + money(b.total) + '</b>' + (Math.abs(b.due) >= 1 ? '<br><small class="' + (b.type === 'sell' ? 'baki' : 'jama') + '">due ' + money(b.due) + '</small>' : '') + '</div></div>';
   }).join('') + '</div>';
 }
 
@@ -414,16 +435,16 @@ V.newbill = function (id) {
   if (id && (!F || F.id !== id)) {
     var b = billById(id); if (!b) return '<div class="empty">Bill not found</div>';
     F = JSON.parse(JSON.stringify(b)); F.paidTouched = true;
+    F.lines.forEach(function (l) { if (!l.dir) { l.dir = lineDir(b, l); if (l.back) l.ex = true; } });
     F.phone = (partyById(b.partyId) || {}).phone || '';
   }
   if (!F) newBillState();
-  var h = '<div class="seg bs big"><button class="sell ' + (F.type === 'sell' ? 'on' : '') + '" onclick="App.fset(\'type\',\'sell\')">SELL</button><button class="buy ' + (F.type === 'buy' ? 'on' : '') + '" onclick="App.fset(\'type\',\'buy\')">BUY</button></div>';
-  h += '<div class="card"><label class="f"><span>Party name <small>(leave blank for cash customer)</small></span><input id="f_party" list="plist" autocomplete="off" value="' + esc(F.partyName) + '" placeholder="Type name" oninput="App.partyHint()"></label>' + partyDatalist();
+  var h = '<div class="card"><label class="f"><span>Party name <small>(leave blank for cash customer)</small></span><input id="f_party" list="plist" autocomplete="off" value="' + esc(F.partyName) + '" placeholder="Type name" oninput="App.partyHint()"></label>' + partyDatalist();
   h += '<div id="f_phint" class="muted" style="font-size:12px;margin:-6px 0 0"></div></div>';
   h += '<div id="f_lines">' + F.lines.map(lineForm).join('') + '</div>';
-  h += '<div class="btns" style="margin-bottom:12px"><button class="btn small" style="flex:1" onclick="App.addLine()">+ Add one more item</button><button class="btn small" style="flex:1" onclick="App.addLine(1)">+ ' + (F.type === 'buy' ? 'Fine / item given to party' : 'Fine / item taken from party') + '</button></div>';
+  h += '<div class="btns" style="margin-bottom:12px"><button class="btn small" style="flex:1" onclick="App.addLine()">+ Add one more item</button><button class="btn small" style="flex:1" onclick="App.addLine(1)">+ ' + (mainDir() === 'buy' ? 'Fine / item given to party' : 'Fine / item taken from party') + '</button></div>';
   h += '<div class="card"><div id="f_sum"></div>';
-  h += '<label class="f"><span id="f_paidlbl">' + (F.type === 'sell' ? 'Money received now (₹)' : 'Money paid now (₹)') + '</span><input id="f_paid" class="bigin" type="number" step="any" inputmode="decimal" value="' + esc(F.paid) + '" oninput="App.paidEdit()"></label>';
+  h += '<label class="f"><span id="f_paidlbl">Money received now (₹)</span><input id="f_paid" class="bigin" type="number" step="any" inputmode="decimal" value="' + esc(F.paid) + '" oninput="App.paidEdit()"></label>';
   h += '<label class="chk" style="display:flex;gap:8px;align-items:center;margin:4px 0 8px;font-weight:600"><input type="checkbox" id="f_rtgs"' + (F.rtgs ? ' checked' : '') + ' onchange="App.recalc()" style="width:22px;height:22px"> RTGS (payment by bank: no cash, no Baki)</label>';
   h += '<input type="hidden" id="f_mode" value="cash">';
   h += '<div id="f_due"></div></div>';
@@ -436,16 +457,18 @@ V.newbill = function (id) {
   return h;
 };
 V.newbill_after = function () { recalc(); partyHint(); };
-function newBillState() { F = { id: null, type: 'sell', date: today(), time: nowTime(), partyName: '', phone: '', lines: [{ item: 'silver', weight: '', touch: '', rate: '' }], gstOn: D.settings.gstOn, gstRate: D.settings.gstRate, gstInter: D.settings.gstInter, paid: '', mode: 'cash', note: '' }; }
+function mainDir() { var l = F.lines.filter(function (x) { return !x.ex; })[0] || F.lines[0]; return (l && l.dir) || F.type || 'sell'; }
+function newBillState() { F = { id: null, type: 'sell', date: today(), time: nowTime(), partyName: '', phone: '', lines: [{ item: 'silver', weight: '', touch: '', rate: '', dir: 'sell' }], gstOn: D.settings.gstOn, gstRate: D.settings.gstRate, gstInter: D.settings.gstInter, paid: '', mode: 'cash', note: '' }; }
 function lineForm(l, i) {
   var it = ITEMS[l.item], m = it.metal;
-  var h = '<div class="line' + (l.back ? ' back' : '') + '" id="ln' + i + '"><div class="hd"><b>' + (l.back ? (F.type === 'buy' ? 'Given to party (exchange)' : 'Taken from party (exchange)') : (F.lines.length > 1 ? 'Item ' + (i + 1) : 'Item')) + '</b>' + (F.lines.length > 1 ? '<button class="btn small red" onclick="App.delLine(' + i + ')">Remove</button>' : '') + '</div>';
+  var d = l.dir || 'sell';
+  var h = '<div class="line ' + (l.ex ? 'back' : d) + '" id="ln' + i + '"><div class="hd"><b>' + (l.ex ? (d === 'sell' ? 'Given to party (exchange)' : 'Taken from party (exchange)') : (F.lines.length > 1 ? 'Item ' + (i + 1) : 'Item')) + '</b><div class="hdr"><div class="seg bs ld"><button class="sell' + (d === 'sell' ? ' on' : '') + '" onclick="App.lineDir(' + i + ',\'sell\')">SELL</button><button class="buy' + (d === 'buy' ? ' on' : '') + '" onclick="App.lineDir(' + i + ',\'buy\')">BUY</button></div>' + (F.lines.length > 1 ? '<button class="btn small red" onclick="App.delLine(' + i + ')">Remove</button>' : '') + '</div></div>';
   h += '<div class="chips">' + ITEM_KEYS.map(function (k) { return '<button class="' + (k === l.item ? 'on' : '') + '" onclick="App.lineItem(' + i + ',\'' + k + '\')">' + ITEMS[k].name + '</button>'; }).join('') + '</div>';
   h += '<div class="row"><label class="f"><span>Weight (' + unitOf(m) + ')</span><input class="bigin" type="number" step="any" inputmode="decimal" data-i="' + i + '" data-k="weight" value="' + esc(l.weight) + '" oninput="App.lineIn(this)"></label>';
   if (it.touch || it.optTouch) h += '<label class="f"><span>Touch %' + (it.touch ? '' : ' <small>blank = 100</small>') + '</span><input class="bigin" type="number" step="any" inputmode="decimal" data-i="' + i + '" data-k="touch" value="' + esc(it.touch || num(l.touch) < 100 ? l.touch : '') + '" oninput="App.lineIn(this)"></label>';
-  h += '</div><div class="row"><label class="f"><span>Rate ' + rateLbl(m) + (l.back ? ' <small>(blank if free)</small>' : '') + '</span><input class="bigin" type="number" step="any" inputmode="decimal" data-i="' + i + '" data-k="rate" value="' + esc(l.rate) + '" oninput="App.lineIn(this)"></label>';
+  h += '</div><div class="row"><label class="f"><span>Rate ' + rateLbl(m) + (l.ex ? ' <small>(blank if free)</small>' : '') + '</span><input class="bigin" type="number" step="any" inputmode="decimal" data-i="' + i + '" data-k="rate" value="' + esc(l.rate) + '" oninput="App.lineIn(this)"></label>';
   if (it.majuri) h += '<label class="f"><span>Majuri (₹) <small>cash</small></span><input type="number" step="any" inputmode="decimal" data-i="' + i + '" data-k="mj" value="' + esc(l.mj || '') + '" oninput="App.lineIn(this)"></label>';
-  if (!l.back) h += '<label class="f"><span>Rate fixed on (' + unitOf(m) + ') <small>blank = all</small></span><input type="number" step="any" inputmode="decimal" data-i="' + i + '" data-k="rw" value="' + esc(l.rw || '') + '" oninput="App.lineIn(this)"></label>';
+  h += '<label class="f"><span>Rate fixed on (' + unitOf(m) + ') <small>blank = all</small></span><input type="number" step="any" inputmode="decimal" data-i="' + i + '" data-k="rw" value="' + esc(l.rw || '') + '" oninput="App.lineIn(this)"></label>';
   h += '</div><div class="muted" style="font-size:12px" id="lr' + i + '"></div>';
   if (it.touch || it.optTouch) h += '<div class="sum"><span class="muted">Fine</span><b id="lf' + i + '"></b></div>';
   h += '<div class="sum"><span class="muted">Amount</span><span class="amt" id="la' + i + '"></span></div></div>';
@@ -468,10 +491,12 @@ function recalc() {
   var s = '';
   if (b.gstOn) s += b.gstInter ? '<div class="sum"><span>IGST ' + b.gstRate + '%</span><span>' + moneyP(b.igst) + '</span></div>' : '<div class="sum"><span>CGST ' + b.gstRate / 2 + '%</span><span>' + moneyP(b.cgst) + '</span></div><div class="sum"><span>SGST ' + b.gstRate / 2 + '%</span><span>' + moneyP(b.sgst) + '</span></div>';
   if (b.roundOff) s += '<div class="sum muted"><span>Round off</span><span>' + b.roundOff.toFixed(2) + '</span></div>';
-  s += '<div class="sum big"><span>Total</span><span>' + money(b.total) + '</span></div>';
+  if (billMixed(b)) { var sp = billSplit(b); s += '<div class="sum"><span>Sold</span><span>' + money(sp.sold) + '</span></div><div class="sum"><span>Bought</span><span>' + money(sp.bought) + '</span></div>'; }
+  s += '<div class="sum big"><span>' + (b.lines.some(function (l) { return num(l.amount); }) ? (b.type === 'sell' ? 'Total (party pays you)' : 'Total (you pay party)') : 'Total') + '</span><span>' + money(b.total) + '</span></div>';
   $('f_sum').innerHTML = s;
   var due = b.rtgs ? 0 : b.total - num($('f_paid').value);
-  $('f_due').innerHTML = (Math.abs(due) >= 1 ? '<div class="sum"><span>' + (F.type === 'sell' ? 'Pending: goes to party Baki' : 'Pending: goes to party Jama') + '</span><b class="' + (F.type === 'sell' ? 'baki' : 'jama') + '">' + money(due) + '</b></div>' : '') + metalHtml(b);
+  $('f_paidlbl').textContent = b.type === 'sell' ? 'Money received now (₹)' : 'Money paid now (₹)';
+  $('f_due').innerHTML = (Math.abs(due) >= 1 ? '<div class="sum"><span>' + (b.type === 'sell' ? 'Pending: goes to party Baki' : 'Pending: goes to party Jama') + '</span><b class="' + (b.type === 'sell' ? 'baki' : 'jama') + '">' + money(due) + '</b></div>' : '') + metalHtml(b);
 }
 function partyHint() {
   var p = partyByName($('f_party').value), hEl = $('f_phint');
@@ -491,7 +516,7 @@ function saveBill(print) {
   if (!lines.length) { toast('Enter weight / quantity'); return; }
   for (var i = 0; i < lines.length; i++) { if (ITEMS[lines[i].item].touch && !num(lines[i].touch)) { toast('Enter touch for ' + ITEMS[lines[i].item].name); return; } }
   var p = F.partyName ? ensureParty(F.partyName, F.phone) : null;
-  var b = { id: F.id || uid(), type: F.type, no: F.no, date: F.date, time: F.time, partyId: p ? p.id : '', partyName: p ? p.name : '', lines: lines.map(function (l) { var o = { item: l.item, weight: l.weight, touch: l.touch, rate: l.rate }; if (num(l.rw)) o.rw = l.rw; if (num(l.mj)) o.mj = l.mj; if (l.back) o.back = true; return o; }), gstOn: F.gstOn, gstRate: F.gstRate, gstInter: F.gstInter, paid: F.rtgs ? 0 : (F.paid === '' ? 0 : F.paid), rtgs: !!F.rtgs, mode: F.rtgs ? 'rtgs' : F.mode, note: F.note, createdAt: F.createdAt || new Date().toISOString() };
+  var b = { id: F.id || uid(), type: F.type, no: F.no, date: F.date, time: F.time, partyId: p ? p.id : '', partyName: p ? p.name : '', lines: lines.map(function (l) { var o = { item: l.item, weight: l.weight, touch: l.touch, rate: l.rate }; if (num(l.rw)) o.rw = l.rw; if (num(l.mj)) o.mj = l.mj; o.dir = l.dir || mainDir(); if (l.ex) o.ex = true; return o; }), gstOn: F.gstOn, gstRate: F.gstRate, gstInter: F.gstInter, paid: F.rtgs ? 0 : (F.paid === '' ? 0 : F.paid), rtgs: !!F.rtgs, mode: F.rtgs ? 'rtgs' : F.mode, note: F.note, createdAt: F.createdAt || new Date().toISOString() };
   billCalc(b);
   if (!p && Math.abs(b.due) >= 1) { toast('Enter a party name: this bill has a balance of ' + money(b.due)); return; }
   var bm0 = billMetal(b);
@@ -523,13 +548,14 @@ function billById(id) { for (var i = 0; i < D.bills.length; i++) if (D.bills[i].
 V.bill = function (id) {
   var b = billById(id);
   if (!b) return '<div class="empty">Bill not found</div>';
-  var h = '<div class="card"><div class="sum"><span><span class="pill ' + b.type + '">' + (b.type === 'sell' ? 'SALE' : 'PURCHASE') + '</span> <b>' + esc(b.no) + '</b></span><span>' + fd(b.date) + ' ' + esc(b.time) + '</span></div>';
+  var h = '<div class="card"><div class="sum"><span><span class="pill ' + b.type + '">' + billKind(b).toUpperCase() + '</span> <b>' + esc(b.no) + '</b></span><span>' + fd(b.date) + ' ' + esc(b.time) + '</span></div>';
   h += '<div class="sum"><span>Party</span><b>' + (b.partyId ? '<a href="#" onclick="App.go(\'party\',\'' + b.partyId + '\');return false">' + esc(b.partyName) + '</a>' : 'Cash') + '</b></div>';
   h += '<div class="tw" style="margin:8px 0"><table class="t"><thead><tr><th>Item</th><th class="n">Wt</th><th class="n">Touch</th><th class="n">Fine</th><th class="n">Rate</th><th class="n">Amount</th></tr></thead><tbody>';
   b.lines.forEach(function (l) { var it = ITEMS[l.item]; h += '<tr><td>' + lineName(b, l) + (lineNote(l, b) ? '<br><small class="muted">' + lineNote(l, b) + '</small>' : '') + '</td><td class="n">' + w(l.weight) + '</td><td class="n">' + (it.touch || l.touch < 100 ? l.touch : '') + '</td><td class="n">' + (it.touch || l.touch < 100 ? w(l.fine) : '') + '</td><td class="n">' + inr(l.rate) + '</td><td class="n">' + inr(l.amount) + '</td></tr>'; });
   h += '</tbody></table></div>';
   if (b.gstOn) h += '<div class="sum"><span>GST ' + b.gstRate + '%</span><span>' + moneyP(b.cgst + b.sgst + b.igst) + '</span></div>';
-  h += '<div class="sum big"><span>Total</span><span>' + money(b.total) + '</span></div>' + metalHtml(b);
+  if (billMixed(b)) { var sp = billSplit(b); h += '<div class="sum"><span>Sold</span><span>' + money(sp.sold) + '</span></div><div class="sum"><span>Bought</span><span>' + money(sp.bought) + '</span></div>'; }
+  h += '<div class="sum big"><span>' + (billMixed(b) ? (b.type === 'sell' ? 'Total (party pays)' : 'Total (we pay)') : 'Total') + '</span><span>' + money(b.total) + '</span></div>' + metalHtml(b);
   h += '<div class="sum"><span>' + (b.type === 'sell' ? 'Received' : 'Paid') + ' (' + (b.rtgs ? 'RTGS' : 'CASH') + ')</span><span>' + (b.rtgs ? money(b.total) : money(b.paid)) + '</span></div>';
   if (Math.abs(b.due) >= 1) h += '<div class="sum"><span>Balance</span><b class="' + (b.type === 'sell' ? 'baki' : 'jama') + '">' + money(b.due) + '</b></div>';
   if (b.note) h += '<div class="muted" style="margin-top:6px">Note: ' + esc(b.note) + '</div>';
@@ -570,7 +596,7 @@ function billHtml(b, paper) {
   var width = paper === '58' ? '54mm' : paper === '80' ? '74mm' : slip ? (sw - 12) + 'mm' : '190mm';
   var nl = b.lines.length, sfs = nl > 6 ? 13 : nl > 4 ? 15 : nl > 2 ? 17 : 20;
   var party = partyById(b.partyId) || {};
-  var title = b.type === 'sell' ? (b.gstOn ? 'TAX INVOICE' : 'SALE BILL') : 'PURCHASE BILL';
+  var title = billMixed(b) ? 'SALE &amp; PURCHASE BILL' : b.type === 'sell' ? (b.gstOn ? 'TAX INVOICE' : 'SALE BILL') : 'PURCHASE BILL';
   var css = '@page{size:' + (slip ? sw + 'mm ' + sh + 'mm' : thermal ? (paper === '58' ? '58mm' : '80mm') + ' auto' : (paper === 'a5' ? 'A5' : 'A4')) + ';margin:' + (slip ? '0' : thermal ? '2mm' : '10mm') + '}' +
     (slip ? 'html,body{margin:0;padding:0}body{font-family:Arial,Helvetica,sans-serif;color:#000;box-sizing:border-box;width:' + sw + 'mm;height:' + (sh - 2) + 'mm;padding:' + (py + st) + 'mm ' + px + 'mm ' + Math.max(0, py - st) + 'mm;display:flex;flex-direction:column;justify-content:center;overflow:hidden;font-size:' + sfs + 'px}.wrap{width:100%}'
       : 'body{font-family:Arial,Helvetica,sans-serif;color:#000;margin:0 auto;width:' + width + ';font-size:' + (thermal ? (paper === '58' ? '10px' : '11.5px') : '12.5px') + '}') +
@@ -606,7 +632,8 @@ function billHtml(b, paper) {
     else h += '<tr><td>CGST ' + b.gstRate / 2 + '%</td><td class="r">' + inr(b.cgst, 2) + '</td></tr><tr><td>SGST ' + b.gstRate / 2 + '%</td><td class="r">' + inr(b.sgst, 2) + '</td></tr>';
   }
   if (b.roundOff) h += '<tr><td>Round off</td><td class="r">' + b.roundOff.toFixed(2) + '</td></tr>';
-  h += '<tr class="big"><td>TOTAL</td><td class="r">₹' + inr(b.total) + '</td></tr>';
+  if (billMixed(b)) { var sp2 = billSplit(b); h += '<tr><td>Sold</td><td class="r">' + inr(sp2.sold) + '</td></tr><tr><td>Bought</td><td class="r">' + inr(sp2.bought) + '</td></tr>'; }
+  h += '<tr class="big"><td>' + (billMixed(b) ? (b.type === 'sell' ? 'TOTAL (party pays)' : 'TOTAL (we pay)') : 'TOTAL') + '</td><td class="r">₹' + inr(b.total) + '</td></tr>';
   h += '<tr><td>' + (b.type === 'sell' ? 'Received' : 'Paid') + ' (' + (b.rtgs ? 'RTGS' : 'CASH') + ')</td><td class="r">' + inr(b.rtgs ? b.total : b.paid) + '</td></tr>';
   if (Math.abs(b.due) >= 1) h += '<tr class="tot"><td>Balance</td><td class="r">' + inr(b.due) + '</td></tr>';
   if (thermal) {
@@ -675,7 +702,7 @@ function billText(b, W) {
   if (S.address) S.address.split('\n').forEach(function (a) { L.push({ t: a, c: 1 }); });
   if (S.phone) L.push({ t: 'Ph: ' + S.phone, c: 1 });
   L.push(dash);
-  L.push({ t: b.type === 'sell' ? (b.gstOn ? 'TAX INVOICE' : 'SALE BILL') : 'PURCHASE BILL', c: 1, b: 1 });
+  L.push({ t: billMixed(b) ? 'SALE & PURCHASE BILL' : b.type === 'sell' ? (b.gstOn ? 'TAX INVOICE' : 'SALE BILL') : 'PURCHASE BILL', c: 1, b: 1 });
   L.push(lr('No: ' + b.no, fd(b.date) + ' ' + (b.time || ''), W));
   L.push((b.type === 'sell' ? 'To: ' : 'From: ') + (b.partyName || 'Cash'));
   L.push(dash);
@@ -692,7 +719,8 @@ function billText(b, W) {
     else { L.push(lr('CGST ' + b.gstRate / 2 + '%', inr(b.cgst, 2), W)); L.push(lr('SGST ' + b.gstRate / 2 + '%', inr(b.sgst, 2), W)); }
   }
   if (b.roundOff) L.push(lr('Round off', b.roundOff.toFixed(2), W));
-  L.push({ t: lr('TOTAL', 'Rs.' + inr(b.total), W), b: 1 });
+  if (billMixed(b)) { var sp3 = billSplit(b); L.push(lr('Sold', inr(sp3.sold), W)); L.push(lr('Bought', inr(sp3.bought), W)); }
+  L.push({ t: lr(billMixed(b) ? (b.type === 'sell' ? 'TOTAL(party pays)' : 'TOTAL (we pay)') : 'TOTAL', 'Rs.' + inr(b.total), W), b: 1 });
   L.push(lr((b.type === 'sell' ? 'Received' : 'Paid') + (b.rtgs ? ' RTGS' : ''), inr(b.rtgs ? b.total : b.paid), W));
   if (Math.abs(b.due) >= 1) L.push({ t: lr('Balance', inr(b.due), W), b: 1 });
   if (b.partyId) { var c = compute().party[b.partyId]; if (c) { L.push(dash); L.push('Party bal: ' + balancePlain(c)); } }
@@ -709,10 +737,11 @@ function btPrintBill(id) {
 }
 function shareBill(id) {
   var b = billById(id), S = D.settings;
-  var t = S.shopName + '\n' + (b.type === 'sell' ? 'Sale' : 'Purchase') + ' bill ' + b.no + ' · ' + fd(b.date) + '\n' + (b.partyName || 'Cash') + '\n';
+  var t = S.shopName + '\n' + billKind(b) + ' bill ' + b.no + ' · ' + fd(b.date) + '\n' + (b.partyName || 'Cash') + '\n';
   b.lines.forEach(function (l) { var it = ITEMS[l.item]; t += lineName(b, l) + (lineNote(l, b) ? ' [' + lineNote(l, b) + ']' : '') + ': ' + w(l.weight, it.metal) + (it.touch || l.touch < 100 ? ' @' + l.touch + '% = ' + w(l.fine, it.metal) + ' fine' : '') + ' x ' + inr(l.rate) + ' = Rs.' + inr(l.amount) + '\n'; });
   if (b.gstOn) t += 'GST ' + b.gstRate + '%: Rs.' + inr(b.cgst + b.sgst + b.igst, 2) + '\n';
-  t += 'Total: Rs.' + inr(b.total) + '\n' + (b.type === 'sell' ? 'Received' : 'Paid') + (b.rtgs ? ' (RTGS)' : '') + ': Rs.' + inr(b.rtgs ? b.total : b.paid);
+  if (billMixed(b)) { var sp4 = billSplit(b); t += 'Sold: Rs.' + inr(sp4.sold) + '\nBought: Rs.' + inr(sp4.bought) + '\n'; }
+  t += 'Total' + (billMixed(b) ? (b.type === 'sell' ? ' (party pays)' : ' (we pay)') : '') + ': Rs.' + inr(b.total) + '\n' + (b.type === 'sell' ? 'Received' : 'Paid') + (b.rtgs ? ' (RTGS)' : '') + ': Rs.' + inr(b.rtgs ? b.total : b.paid);
   if (Math.abs(b.due) >= 1) t += '\nBalance: Rs.' + inr(b.due);
   shareText(t);
 }
@@ -940,10 +969,11 @@ function delEntry() {
 }
 
 /* ----- Stock (mirrors Stock sheet) ----- */
+/* v4.0: Stock & Cash shows TODAY only (starts at 0 every day, like Home). Running totals: Day Book. */
 V.stock = function () {
-  var c = compute(), h = '';
-  h += '<div class="grid" style="margin-bottom:12px">' + tile('Cash in hand', money(c.cash.close), 'In ' + money(c.cash.in) + ' · Out ' + money(c.cash.out)) + tile('Silver (fine)', w(c.metal.silver, 'silver'), '', 'silver') + tile('Gold (fine)', w(c.metal.gold, 'gold'), '', 'gold') + '</div>';
-  h += '<div class="card"><h2>Stock statement</h2><div class="tw"><table class="t"><thead><tr><th>Item</th><th class="n">Opening</th><th class="n">Buy</th><th class="n">Sell</th><th class="n">Adj in</th><th class="n">Adj out</th><th class="n">Closing</th><th class="n">Fine</th></tr></thead><tbody>';
+  var c = compute(null, today()), h = '';
+  h += '<div class="grid" style="margin-bottom:12px">' + tile('Cash today', money(c.cash.close), 'In ' + money(c.cash.in) + ' · Out ' + money(c.cash.out)) + tile('Silver today (fine)', w(c.metal.silver, 'silver'), 'net in/out', 'silver') + tile('Gold today (fine)', w(c.metal.gold, 'gold'), 'net in/out', 'gold') + '</div>';
+  h += '<div class="card"><h2>Today\'s stock statement <small class="muted" style="font-weight:400">(starts at 0 every day · old days: More → Day Book)</small></h2><div class="tw"><table class="t"><thead><tr><th>Item</th><th class="n">Opening</th><th class="n">Buy</th><th class="n">Sell</th><th class="n">Adj in</th><th class="n">Adj out</th><th class="n">Closing</th><th class="n">Fine</th></tr></thead><tbody>';
   shownKeys().forEach(function (k) {
     var s = c.stock[k], it = ITEMS[k];
     h += '<tr class="click" onclick="App.go(\'registers\',\'' + k + '\')"><td>' + it.name + '<br><small class="muted">' + unitOf(it.metal) + (D.settings.stockItems[k] ? '' : ' · not counted') + '</small></td><td class="n">' + w(s.open) + '</td><td class="n jama">' + w(s.buy) + '</td><td class="n baki">' + w(s.sell) + '</td><td class="n">' + w(s.adjIn) + '</td><td class="n">' + w(s.adjOut) + '</td><td class="n"><b>' + w(s.close) + '</b></td><td class="n">' + (it.touch ? w(s.closeFine) : '') + '</td></tr>';
@@ -964,7 +994,7 @@ function dayData(d) {
   var bills = D.bills.filter(function (b) { return b.date === d; }).sort(function (a, b) { return (a.time || '').localeCompare(b.time || ''); });
   var ents = D.entries.filter(function (e) { return e.date === d; });
   var sold = 0, bought = 0, recd = 0, paid = 0;
-  bills.forEach(function (b) { if (b.type === 'sell') { sold += b.total; recd += b.paid; } else { bought += b.total; paid += b.paid; } });
+  bills.forEach(function (b) { var x = billSplit(b); sold += x.sold; bought += x.bought; if (b.type === 'sell') recd += b.paid; else paid += b.paid; });
   var rows = shownKeys().map(function (k) {
     var p = prev.stock[k], c = cur.stock[k];
     return { k: k, open: p.close, buy: r3(c.buy - p.buy), sell: r3(c.sell - p.sell), inn: r3(c.adjIn - p.adjIn), out: r3(c.adjOut - p.adjOut), close: c.close, fine: c.closeFine };
@@ -989,7 +1019,7 @@ V.daybook = function () {
 function dayText(d) {
   var X = dayData(d), S = D.settings, t = '*' + S.shopName + '*\n*Day report ' + fd(d) + '*\n\n';
   t += 'Sales: Rs.' + inr(X.sold) + ' (recd Rs.' + inr(X.recd) + ')\nPurchases: Rs.' + inr(X.bought) + ' (paid Rs.' + inr(X.paid) + ')\n';
-  if (X.bills.length) { t += '\n*Bills*\n'; X.bills.forEach(function (b) { t += (b.type === 'sell' ? 'Sale ' : 'Buy ') + b.no + ' ' + (b.partyName || 'Cash') + ': ' + b.lines.map(function (l) { return ITEMS[l.item].short + ' ' + w(l.weight) + ' @' + inr(l.rate); }).join(', ') + ' = Rs.' + inr(b.total) + '\n'; }); }
+  if (X.bills.length) { t += '\n*Bills*\n'; X.bills.forEach(function (b) { t += (billMixed(b) ? 'Sale+Buy ' : b.type === 'sell' ? 'Sale ' : 'Buy ') + b.no + ' ' + (b.partyName || 'Cash') + ': ' + b.lines.map(function (l) { return (l.dir ? (lineDir(b, l) === 'sell' ? 'Sell ' : 'Buy ') : '') + ITEMS[l.item].short + ' ' + w(l.weight) + ' @' + inr(l.rate); }).join(', ') + ' = Rs.' + inr(b.total) + '\n'; }); }
   if (X.ents.length) { t += '\n*Other entries*\n'; X.ents.forEach(function (e) { t += KIND[e.kind].short + (e.partyId ? ' ' + ((partyById(e.partyId) || {}).name || '') : '') + ': ' + fmtAcct(acctOfItem(e.item), e.qty).replace(/<[^>]*>/g, '').replace('₹', 'Rs.') + (e.note ? ' (' + e.note + ')' : '') + '\n'; }); }
   t += '\n*Stock (opening > closing)*\n';
   X.rows.forEach(function (r) { var it = ITEMS[r.k]; if (Math.abs(r.open) < 0.0005 && Math.abs(r.close) < 0.0005 && !r.buy && !r.sell) return; t += it.name + ': ' + w(r.open) + ' > ' + w(r.close, it.metal) + (r.buy ? ' | buy ' + w(r.buy) : '') + (r.sell ? ' | sell ' + w(r.sell) : '') + (it.touch ? ' | fine ' + w(r.fine) : '') + '\n'; });
@@ -1006,7 +1036,7 @@ function printDay() {
   var X = dayData(dbState.date), d = X.d, S = D.settings;
   var h = '<!doctype html><html><head><meta charset="utf-8"><style>@page{size:A4;margin:10mm}body{font-family:Arial;font-size:12px}table{width:100%;border-collapse:collapse;margin-bottom:10px}th,td{border:1px solid #777;padding:4px 6px}th{background:#f1e7cf}.r{text-align:right}</style></head><body><h2 style="margin:0">' + esc(S.shopName) + '</h2><h3>Day report ' + fd(d) + '</h3>';
   h += '<table><tr><th>Time</th><th>No</th><th>Type</th><th>Party</th><th>Items</th><th class="r">Total</th><th class="r">Recd/Paid</th></tr>';
-  X.bills.forEach(function (b) { h += '<tr><td>' + esc(b.time) + '</td><td>' + esc(b.no) + '</td><td>' + (b.type === 'sell' ? 'Sale' : 'Purchase') + '</td><td>' + esc(b.partyName || 'Cash') + '</td><td>' + b.lines.map(function (l) { return ITEMS[l.item].short + ' ' + w(l.weight) + ' @' + inr(l.rate); }).join('<br>') + '</td><td class="r">' + inr(b.total) + '</td><td class="r">' + inr(b.paid) + '</td></tr>'; });
+  X.bills.forEach(function (b) { h += '<tr><td>' + esc(b.time) + '</td><td>' + esc(b.no) + '</td><td>' + billKind(b) + '</td><td>' + esc(b.partyName || 'Cash') + '</td><td>' + b.lines.map(function (l) { return (l.dir ? (lineDir(b, l) === 'sell' ? 'Sell ' : 'Buy ') : '') + ITEMS[l.item].short + ' ' + w(l.weight) + ' @' + inr(l.rate); }).join('<br>') + '</td><td class="r">' + inr(b.total) + '</td><td class="r">' + inr(b.paid) + '</td></tr>'; });
   h += '</table><table><tr><th>Item</th><th class="r">Opening</th><th class="r">Buy</th><th class="r">Sell</th><th class="r">In</th><th class="r">Out</th><th class="r">Closing</th><th class="r">Fine</th></tr>';
   X.rows.forEach(function (r) { var it = ITEMS[r.k]; h += '<tr><td>' + it.name + '</td><td class="r">' + w(r.open) + '</td><td class="r">' + w(r.buy) + '</td><td class="r">' + w(r.sell) + '</td><td class="r">' + w(r.inn) + '</td><td class="r">' + w(r.out) + '</td><td class="r">' + w(r.close, it.metal) + '</td><td class="r">' + (it.touch ? w(r.fine) : '') + '</td></tr>'; });
   h += '<tr><td>Cash</td><td class="r">' + inr(X.cash.open) + '</td><td></td><td></td><td class="r">' + inr(X.cash.in) + '</td><td class="r">' + inr(X.cash.out) + '</td><td class="r">' + inr(X.cash.close) + '</td><td></td></tr></table></body></html>';
@@ -1081,10 +1111,10 @@ V.users_after = function () {
 
 /* ----- More menu ----- */
 V.more = function () {
-  var items = [['registers', 'Bill Registers', 'Silver, Sili 999, Rupa, Gold, Kaccha with ratios'], ['stock', 'Stock & Cash', 'Stock statement, cash in/out, expenses'], ['daybook', 'Day Book', 'Everything on one day, day report'], ['parties', 'Parties', 'Customers & suppliers'], ['printer', 'Printer', 'Bill size, Bluetooth thermal printer'], ['backup', 'Backup & Excel', 'Export to Excel, backup, restore'], ['settings', 'Settings', 'Shop details, GST, units, opening stock']];
+  var items = [['registers', 'Bill Registers', 'Silver, Sili 999, Rupa, Gold, Kaccha with ratios'], ['stock', 'Stock & Cash', 'Today\'s stock statement, cash in/out, expenses'], ['daybook', 'Day Book', 'Everything on one day, day report'], ['parties', 'Parties', 'Customers & suppliers'], ['printer', 'Printer', 'Bill size, Bluetooth thermal printer'], ['backup', 'Backup & Excel', 'Export to Excel, backup, restore'], ['settings', 'Settings', 'Shop details, GST, units, opening stock']];
   if (window.Cloud && Cloud.enabled && Cloud.isOwner) items.push(['users', 'Staff logins', 'Who can open this shop on other phones / laptops']);
   if (window.Cloud && Cloud.enabled && Cloud.user) items.push(['__signout', 'Sign out', 'Signed in as ' + esc(Cloud.user.email)]);
-  return '<div class="card menu"><div class="list">' + items.map(function (x) { return '<div class="it" onclick="' + (x[0] === '__signout' ? 'Cloud.signOut()' : 'App.go(\'' + x[0] + '\')') + '"><div class="l"><b>' + x[1] + '</b><small>' + x[2] + '</small></div><div class="r">&#8250;</div></div>'; }).join('') + '</div></div><p class="muted c" style="font-size:12px">Bullion Book 3.8 · ' + (window.Cloud && Cloud.enabled ? 'data saved online and on this device' : 'all data stays on this phone') + '</p>';
+  return '<div class="card menu"><div class="list">' + items.map(function (x) { return '<div class="it" onclick="' + (x[0] === '__signout' ? 'Cloud.signOut()' : 'App.go(\'' + x[0] + '\')') + '"><div class="l"><b>' + x[1] + '</b><small>' + x[2] + '</small></div><div class="r">&#8250;</div></div>'; }).join('') + '</div></div><p class="muted c" style="font-size:12px">Bullion Book 4.0 · ' + (window.Cloud && Cloud.enabled ? 'data saved online and on this device' : 'all data stays on this phone') + '</p>';
 };
 V.parties = function () {
   var c = compute();
@@ -1233,7 +1263,7 @@ function exportXlsx() {
   D.entries.slice().sort(function (a, b) { return a.date.localeCompare(b.date); }).forEach(function (e) { bj.push([fd(e.date), KIND[e.kind].short, (partyById(e.partyId) || {}).name || '', e.item === 'cash' ? 'Cash' : ITEMS[e.item].name, e.weight || '', e.touch || '', e.qty, e.mode || '', e.note]); });
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(bj), 'Baki Jama');
   var bl = [['Bill No', 'Type', 'Date', 'Time', 'Party', 'Item', 'Weight', 'Touch', 'Fine', 'Rate', 'Amount', 'Total', 'Paid/Recd', 'Mode', 'Balance', 'Note']];
-  D.bills.slice().sort(function (a, b) { return (a.date + a.time).localeCompare(b.date + b.time); }).forEach(function (b) { b.lines.forEach(function (l, i) { bl.push([b.no, b.type === 'sell' ? 'Sale' : 'Purchase', fd(b.date), b.time, b.partyName || 'Cash', ITEMS[l.item].name, r3(l.weight), ITEMS[l.item].touch ? l.touch : '', ITEMS[l.item].touch ? r3(l.fine) : '', l.rate, l.amount].concat(i === 0 ? [b.total, b.paid, b.mode, b.due, b.note] : [])); }); });
+  D.bills.slice().sort(function (a, b) { return (a.date + a.time).localeCompare(b.date + b.time); }).forEach(function (b) { b.lines.forEach(function (l, i) { bl.push([b.no, l.dir ? (lineDir(b, l) === 'sell' ? 'Sale' : 'Purchase') : (b.type === 'sell' ? 'Sale' : 'Purchase'), fd(b.date), b.time, b.partyName || 'Cash', ITEMS[l.item].name, r3(l.weight), ITEMS[l.item].touch ? l.touch : '', ITEMS[l.item].touch ? r3(l.fine) : '', l.rate, l.amount].concat(i === 0 ? [b.total, b.paid, b.mode, b.due, b.note] : [])); }); });
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(bl), 'Bills');
   var sd = [['Date', 'Time', 'Metal', 'Type', 'Name', 'Kg', 'Rate', 'Amount', 'Received']];
   (D.sauda || []).slice().sort(function (a, b) { return (a.date + a.time).localeCompare(b.date + b.time); }).forEach(function (x) { sd.push([fd(x.date), x.time, x.metal === 'gold' ? 'Gold' : 'Silver', x.type === 'buy' ? 'Buy' : 'Sell', x.name, x.qty, x.rate, x.amount, x.received ? 'Yes' : 'No']); });
@@ -1258,12 +1288,13 @@ window.App = {
   nav: function (r) { if (r === 'newbill') { newBillState(); } nav(r); },
   go: go, back: back, closeModal: closeModal,
   rateFix: rateFix, rfCalc: rfCalc, saveRateFix: saveRateFix,
-  newBill: function (t, item) { newBillState(); F.type = t; if (item) F.lines[0].item = item; go('newbill'); },
+  newBill: function (t, item) { newBillState(); F.type = t; F.lines[0].dir = t; if (item) F.lines[0].item = item; go('newbill'); },
   newBillFor: newBillFor,
   setReg: function (o) { for (var k in o) regState[k] = o[k]; if (o.range === 'custom' && !regState.from) { regState.from = today().slice(0, 8) + '01'; regState.to = today(); } stack[stack.length - 1].a = null; show(); },
   fset: function (k, v) { readForm(); F[k] = v; show(); },
   lineItem: function (i, v) { readForm(); F.lines[i].item = v; show(); },
-  addLine: function (back) { readForm(); var last = F.lines[F.lines.length - 1]; F.lines.push(back ? { item: 'coin', weight: '', touch: '', rate: '', back: true } : { item: last ? last.item : 'silver', weight: '', touch: '', rate: last ? last.rate : '' }); show(); },
+  addLine: function (back) { readForm(); var md = mainDir(), last = F.lines.filter(function (x) { return !x.ex; }).pop(); F.lines.push(back ? { item: 'coin', weight: '', touch: '', rate: '', dir: md === 'buy' ? 'sell' : 'buy', ex: true } : { item: last ? last.item : 'silver', weight: '', touch: '', rate: last ? last.rate : '', dir: last ? last.dir : md }); show(); },
+  lineDir: function (i, d) { readForm(); F.lines[i].dir = d; show(); },
   delLine: function (i) { readForm(); F.lines.splice(i, 1); show(); },
   lineIn: function (el) { F.lines[+el.getAttribute('data-i')][el.getAttribute('data-k')] = el.value; recalc(); },
   recalc: recalc, partyHint: partyHint,
