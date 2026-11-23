@@ -979,6 +979,16 @@ V.stock = function () {
     h += '<tr class="click" onclick="App.go(\'registers\',\'' + k + '\')"><td>' + it.name + '<br><small class="muted">' + unitOf(it.metal) + (D.settings.stockItems[k] ? '' : ' · not counted') + '</small></td><td class="n">' + w(s.open) + '</td><td class="n jama">' + w(s.buy) + '</td><td class="n baki">' + w(s.sell) + '</td><td class="n">' + w(s.adjIn) + '</td><td class="n">' + w(s.adjOut) + '</td><td class="n"><b>' + w(s.close) + '</b></td><td class="n">' + (it.touch ? w(s.closeFine) : '') + '</td></tr>';
   });
   h += '</tbody></table></div></div>';
+  /* v4.1: also show the full running total (all days) */
+  var T = compute();
+  h += '<div class="card"><h2>Total stock in hand <small class="muted" style="font-weight:400">(all days till now)</small></h2>';
+  h += '<div class="grid" style="margin-bottom:12px">' + tile('Total cash in hand', money(T.cash.close)) + tile('Total silver (fine)', w(T.metal.silver, 'silver'), '', 'silver') + tile('Total gold (fine)', w(T.metal.gold, 'gold'), '', 'gold') + '</div>';
+  h += '<div class="tw"><table class="t"><thead><tr><th>Item</th><th class="n">Total stock</th><th class="n">Fine</th></tr></thead><tbody>';
+  shownKeys().forEach(function (k) {
+    var s = T.stock[k], it = ITEMS[k];
+    h += '<tr class="click" onclick="App.go(\'registers\',\'' + k + '\')"><td>' + it.name + '<br><small class="muted">' + unitOf(it.metal) + (D.settings.stockItems[k] ? '' : ' · not counted') + '</small></td><td class="n"><b>' + w(s.close) + '</b></td><td class="n">' + (it.touch ? w(s.closeFine) : '') + '</td></tr>';
+  });
+  h += '</tbody></table></div></div>';
   h += '<div class="btns"><button class="btn gold" onclick="App.go(\'entry\',{kind:\'cashin\'})">Cash In</button><button class="btn dark" onclick="App.go(\'entry\',{kind:\'cashout\'})">Cash Out / Expense</button></div>';
   h += '<div class="btns"><button class="btn" onclick="App.go(\'entry\',{kind:\'stockin\'})">Stock In</button><button class="btn" onclick="App.go(\'entry\',{kind:\'stockout\'})">Stock Out</button><button class="btn" onclick="App.go(\'settings\')">Opening stock</button></div>';
   var adj = D.entries.filter(function (e) { return e.date === today() && /^(cash|stock)(in|out)$/.test(e.kind); }).sort(function (a, b) { return b.date.localeCompare(a.date); }).slice(0, 30);
@@ -1114,7 +1124,7 @@ V.more = function () {
   var items = [['registers', 'Bill Registers', 'Silver, Sili 999, Rupa, Gold, Kaccha with ratios'], ['stock', 'Stock & Cash', 'Today\'s stock statement, cash in/out, expenses'], ['daybook', 'Day Book', 'Everything on one day, day report'], ['parties', 'Parties', 'Customers & suppliers'], ['printer', 'Printer', 'Bill size, Bluetooth thermal printer'], ['backup', 'Backup & Excel', 'Export to Excel, backup, restore'], ['settings', 'Settings', 'Shop details, GST, units, opening stock']];
   if (window.Cloud && Cloud.enabled && Cloud.isOwner) items.push(['users', 'Staff logins', 'Who can open this shop on other phones / laptops']);
   if (window.Cloud && Cloud.enabled && Cloud.user) items.push(['__signout', 'Sign out', 'Signed in as ' + esc(Cloud.user.email)]);
-  return '<div class="card menu"><div class="list">' + items.map(function (x) { return '<div class="it" onclick="' + (x[0] === '__signout' ? 'Cloud.signOut()' : 'App.go(\'' + x[0] + '\')') + '"><div class="l"><b>' + x[1] + '</b><small>' + x[2] + '</small></div><div class="r">&#8250;</div></div>'; }).join('') + '</div></div><p class="muted c" style="font-size:12px">Bullion Book 4.0 · ' + (window.Cloud && Cloud.enabled ? 'data saved online and on this device' : 'all data stays on this phone') + '</p>';
+  return '<div class="card menu"><div class="list">' + items.map(function (x) { return '<div class="it" onclick="' + (x[0] === '__signout' ? 'Cloud.signOut()' : 'App.go(\'' + x[0] + '\')') + '"><div class="l"><b>' + x[1] + '</b><small>' + x[2] + '</small></div><div class="r">&#8250;</div></div>'; }).join('') + '</div></div><p class="muted c" style="font-size:12px">Bullion Book 4.1 · ' + (window.Cloud && Cloud.enabled ? 'data saved online and on this device' : 'all data stays on this phone') + '</p>';
 };
 V.parties = function () {
   var c = compute();
