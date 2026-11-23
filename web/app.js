@@ -166,6 +166,7 @@ function lineCalc(l) {
 function lineDir(b, l) { return l.back ? (b.type === 'buy' ? 'sell' : 'buy') : b.type; }
 function lineName(b, l) {
   var d = lineDir(b, l);
+  if (l.adv) return ITEMS[l.item].name + (d === 'sell' ? ' (advance given earlier)' : ' (advance taken earlier)');
   if (l.dir && (l.ex || billMixed(b))) return ITEMS[l.item].name + (l.ex ? (d === 'sell' ? ' (given to party)' : ' (taken from party)') : (d === 'sell' ? ' (SOLD)' : ' (BOUGHT)'));
   return ITEMS[l.item].name + (l.back ? (b.type === 'buy' ? ' (given to party)' : ' (taken from party)') : '');
 }
@@ -180,7 +181,7 @@ function billSplit(b) {
   return o;
 }
 function lineNote(l, b) { return [lineNote0(l, b), l.mj ? 'Majuri \u20b9' + inr(l.mj) : ''].filter(Boolean).join(' · '); }
-function lineNote0(l, b) { if (b && b.rtgs) return l.rate ? '' : 'RTGS'; var gv = b && lineDir(b, l) === 'sell' ? 'given ' : 'received '; if ((!l.back || l.dir) && !l.rate && l.fine) return 'No rate · Fine ' + gv + w(l.fine); return l.rw ? 'Rate on ' + w(l.rw) + ' · Fine ' + gv + w(lineMetalFine(l)) : ''; }
+function lineNote0(l, b) { if (l.adv) return l.rw ? 'Rate on ' + w(l.rw) + ' · rest stays as advance' : ''; if (b && b.rtgs) return l.rate ? '' : 'RTGS'; var gv = b && lineDir(b, l) === 'sell' ? 'given ' : 'received '; if ((!l.back || l.dir) && !l.rate && l.fine) return 'No rate · Fine ' + gv + w(l.fine); return l.rw ? 'Rate on ' + w(l.rw) + ' · Fine ' + gv + w(lineMetalFine(l)) : ''; }
 /* Metal settled as fine (no rate): unrated part of a line, or an unrated exchange line. */
 function lineMetalFine(l) {
   var it = ITEMS[l.item];
@@ -194,7 +195,11 @@ function lineMetalFine(l) {
 function billMetal(b) {
   var m = { silver: 0, gold: 0 };
   if (b.rtgs) return m;
-  b.lines.forEach(function (l) { var f = lineMetalFine(l); if (!f) return; m[ITEMS[l.item].metal] += lineDir(b, l) === 'sell' ? f : -f; });
+  b.lines.forEach(function (l) {
+    var sg = lineDir(b, l) === 'sell' ? 1 : -1;
+    if (l.adv) { var rf = r3(l.fine - lineMetalFine(l)); if (rf) m[ITEMS[l.item].metal] -= sg * rf; return; } // v4.3: advance metal given/taken earlier; today's rate clears it
+    var f = lineMetalFine(l); if (!f) return; m[ITEMS[l.item].metal] += sg * f;
+  });
   m.silver = r3(m.silver); m.gold = r3(m.gold);
   return m;
 }
@@ -249,6 +254,7 @@ function compute(upto, day) {
     if (upto && b.date > upto) return;
     old = !!from && b.date < from;
     if (!old) b.lines.forEach(function (l) {
+      if (l.adv) return; // advance metal: stock already moved on the day it was given
       var s = st[l.item];
       if (lineDir(b, l) === 'buy') { s.buy += l.weight; s.buyFine += l.fine; } else { s.sell += l.weight; s.sellFine += l.fine; }
     });
@@ -469,7 +475,8 @@ function lineForm(l, i) {
   h += '</div><div class="row"><label class="f"><span>Rate ' + rateLbl(m) + (l.ex ? ' <small>(blank if free)</small>' : '') + '</span><input class="bigin" type="number" step="any" inputmode="decimal" data-i="' + i + '" data-k="rate" value="' + esc(l.rate) + '" oninput="App.lineIn(this)"></label>';
   if (it.majuri) h += '<label class="f"><span>Majuri (₹) <small>cash</small></span><input type="number" step="any" inputmode="decimal" data-i="' + i + '" data-k="mj" value="' + esc(l.mj || '') + '" oninput="App.lineIn(this)"></label>';
   h += '<label class="f"><span>Rate fixed on (' + unitOf(m) + ') <small>blank = all</small></span><input type="number" step="any" inputmode="decimal" data-i="' + i + '" data-k="rw" value="' + esc(l.rw || '') + '" oninput="App.lineIn(this)"></label>';
-  h += '</div><div class="muted" style="font-size:12px" id="lr' + i + '"></div>';
+  h += '</div><label style="display:flex;gap:10px;align-items:center;margin:8px 0;font-size:15px"><input type="checkbox" style="width:22px;height:22px" ' + (l.adv ? 'checked ' : '') + 'onchange="App.lineAdv(' + i + ',this.checked)"><span><b>Advance ' + (d === 'sell' ? 'given' : 'taken') + ' earlier</b> <small class="muted">(metal already ' + (d === 'sell' ? 'given' : 'received') + ' before, e.g. Paid Gold · Advance. Only today\'s rate is put here. Stock does not change; party ' + (d === 'sell' ? 'Baki' : 'Jama') + ' metal is cleared.)</small></span></label>';
+  h += '<div class="muted" style="font-size:12px" id="lr' + i + '"></div>';
   if (it.touch || it.optTouch) h += '<div class="sum"><span class="muted">Fine</span><b id="lf' + i + '"></b></div>';
   h += '<div class="sum"><span class="muted">Amount</span><span class="amt" id="la' + i + '"></span></div></div>';
   return h;
@@ -516,7 +523,7 @@ function saveBill(print) {
   if (!lines.length) { toast('Enter weight / quantity'); return; }
   for (var i = 0; i < lines.length; i++) { if (ITEMS[lines[i].item].touch && !num(lines[i].touch)) { toast('Enter touch for ' + ITEMS[lines[i].item].name); return; } }
   var p = F.partyName ? ensureParty(F.partyName, F.phone) : null;
-  var b = { id: F.id || uid(), type: F.type, no: F.no, date: F.date, time: F.time, partyId: p ? p.id : '', partyName: p ? p.name : '', lines: lines.map(function (l) { var o = { item: l.item, weight: l.weight, touch: l.touch, rate: l.rate }; if (num(l.rw)) o.rw = l.rw; if (num(l.mj)) o.mj = l.mj; o.dir = l.dir || mainDir(); if (l.ex) o.ex = true; return o; }), gstOn: F.gstOn, gstRate: F.gstRate, gstInter: F.gstInter, paid: F.rtgs ? 0 : (F.paid === '' ? 0 : F.paid), rtgs: !!F.rtgs, mode: F.rtgs ? 'rtgs' : F.mode, note: F.note, createdAt: F.createdAt || new Date().toISOString() };
+  var b = { id: F.id || uid(), type: F.type, no: F.no, date: F.date, time: F.time, partyId: p ? p.id : '', partyName: p ? p.name : '', lines: lines.map(function (l) { var o = { item: l.item, weight: l.weight, touch: l.touch, rate: l.rate }; if (num(l.rw)) o.rw = l.rw; if (num(l.mj)) o.mj = l.mj; o.dir = l.dir || mainDir(); if (l.ex) o.ex = true; if (l.adv) o.adv = true; return o; }), gstOn: F.gstOn, gstRate: F.gstRate, gstInter: F.gstInter, paid: F.rtgs ? 0 : (F.paid === '' ? 0 : F.paid), rtgs: !!F.rtgs, mode: F.rtgs ? 'rtgs' : F.mode, note: F.note, createdAt: F.createdAt || new Date().toISOString() };
   billCalc(b);
   if (!p && Math.abs(b.due) >= 1) { toast('Enter a party name: this bill has a balance of ' + money(b.due)); return; }
   var bm0 = billMetal(b);
@@ -1156,7 +1163,7 @@ V.more = function () {
   var items = [['registers', 'Bill Registers', 'Silver, Sili 999, Rupa, Gold, Kaccha with ratios'], ['stock', 'Stock & Cash', 'Today\'s stock statement, cash in/out, expenses'], ['daybook', 'Day Book', 'Everything on one day, day report'], ['parties', 'Parties', 'Customers & suppliers'], ['printer', 'Printer', 'Bill size, Bluetooth thermal printer'], ['backup', 'Backup & Excel', 'Export to Excel, backup, restore'], ['settings', 'Settings', 'Shop details, GST, units, opening stock']];
   if (window.Cloud && Cloud.enabled && Cloud.isOwner) items.push(['users', 'Staff logins', 'Who can open this shop on other phones / laptops']);
   if (window.Cloud && Cloud.enabled && Cloud.user) items.push(['__signout', 'Sign out', 'Signed in as ' + esc(Cloud.user.email)]);
-  return '<div class="card menu"><div class="list">' + items.map(function (x) { return '<div class="it" onclick="' + (x[0] === '__signout' ? 'Cloud.signOut()' : 'App.go(\'' + x[0] + '\')') + '"><div class="l"><b>' + x[1] + '</b><small>' + x[2] + '</small></div><div class="r">&#8250;</div></div>'; }).join('') + '</div></div><p class="muted c" style="font-size:12px">Bullion Book 4.2 · ' + (window.Cloud && Cloud.enabled ? 'data saved online and on this device' : 'all data stays on this phone') + '</p>';
+  return '<div class="card menu"><div class="list">' + items.map(function (x) { return '<div class="it" onclick="' + (x[0] === '__signout' ? 'Cloud.signOut()' : 'App.go(\'' + x[0] + '\')') + '"><div class="l"><b>' + x[1] + '</b><small>' + x[2] + '</small></div><div class="r">&#8250;</div></div>'; }).join('') + '</div></div><p class="muted c" style="font-size:12px">Bullion Book 4.3 · ' + (window.Cloud && Cloud.enabled ? 'data saved online and on this device' : 'all data stays on this phone') + '</p>';
 };
 V.parties = function () {
   var c = compute();
@@ -1337,6 +1344,7 @@ window.App = {
   lineItem: function (i, v) { readForm(); F.lines[i].item = v; show(); },
   addLine: function (back) { readForm(); var md = mainDir(), last = F.lines.filter(function (x) { return !x.ex; }).pop(); F.lines.push(back ? { item: 'coin', weight: '', touch: '', rate: '', dir: md === 'buy' ? 'sell' : 'buy', ex: true } : { item: last ? last.item : 'silver', weight: '', touch: '', rate: last ? last.rate : '', dir: last ? last.dir : md }); show(); },
   lineDir: function (i, d) { readForm(); F.lines[i].dir = d; show(); },
+  lineAdv: function (i, v) { readForm(); F.lines[i].adv = !!v; show(); },
   delLine: function (i) { readForm(); F.lines.splice(i, 1); show(); },
   lineIn: function (el) { F.lines[+el.getAttribute('data-i')][el.getAttribute('data-k')] = el.value; recalc(); },
   recalc: recalc, partyHint: partyHint,
